@@ -6,14 +6,33 @@ from collections.abc import Mapping
 
 from questlog.models import Progress
 
+BAR_WIDTH = 20
+"""Width of the progress bar, in cells. Every row draws the same number of them."""
+
+
+def _format_bar(count: int, next_threshold: int) -> str:
+    """Draw ``count`` toward ``next_threshold`` as a fixed-width bar.
+
+    The fill is proportional to ``count / next_threshold``: the bar shows how
+    much of the way to the next tier the count has come, not the share of the
+    current tier that is done (``Progress`` does not carry the previous
+    threshold).
+    """
+    ratio = min(1.0, max(0.0, count / next_threshold))
+    # Floor division so a bar never looks full before its threshold is reached
+    filled = min(BAR_WIDTH, max(0, int(BAR_WIDTH * ratio)))
+    return "[" + "#" * filled + "-" * (BAR_WIDTH - filled) + "]"
+
 
 def _format_progress(item: Progress, labels: Mapping[str, str] | None = None) -> str:
     name = labels.get(item.name, item.name) if labels else item.name
     tier_label = f"Tier {item.tier}" if item.tier > 0 else "no tier yet"
     if item.next_threshold is None:
-        return f"[x] {name} ({tier_label}): {item.count} (completed)"
+        bar = "[" + "#" * BAR_WIDTH + "]"
+        return f"[x] {name} ({tier_label}): {bar} {item.count} (completed)"
+    bar = _format_bar(item.count, item.next_threshold)
     return (
-        f"[ ] {name} ({tier_label}): "
+        f"[ ] {name} ({tier_label}): {bar} "
         f"{item.count}/{item.next_threshold} ({item.remaining} remaining)"
     )
 

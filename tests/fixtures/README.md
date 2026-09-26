@@ -2,8 +2,9 @@
 
 Captured on 2026-09-26 with the authenticated GitHub CLI. All samples are
 public activity: most are authored by `ixiion001`, and the accepted-answers
-pages come from `huoyaoyuan`, a public account used because `ixiion001` has no
-accepted answers to capture. No private repository data is included.
+pages were recorded from a public account with accepted answers, named
+`answerer` here so no third party is identified. No private repository data is
+included.
 GraphQL selects only the identifiers, timestamps, review state and pagination
 metadata used by the reader, preserving the returned values and counts.
 
@@ -53,21 +54,21 @@ for `ixiion001`: the account has no discussion answers marked as accepted, so
 the real response has no nodes and no next page. It pins the response envelope
 (`data.user.repositoryDiscussionComments`) and the empty case.
 
-An empty capture cannot show that nodes parse, so the two page files below are
-real captures for `huoyaoyuan`, a public account with accepted answers, using
-the same query and page size 2:
+An empty capture cannot show that nodes parse, so the two page files below were
+recorded from a public account with accepted answers, using the same query and
+page size 2:
 
 ```json
 [
   {
     "file": "graphql-discussion-answers-account-page-1.json",
-    "login": "huoyaoyuan",
+    "login": "answerer",
     "first": 2,
     "after": null
   },
   {
     "file": "graphql-discussion-answers-account-page-2.json",
-    "login": "huoyaoyuan",
+    "login": "answerer",
     "first": 2,
     "after": "Y3Vyc29yOnYyOpHOAAHNSQ=="
   }

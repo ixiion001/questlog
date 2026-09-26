@@ -477,7 +477,7 @@ def test_recorded_account_has_no_accepted_discussion_answers():
 def test_recorded_accepted_answers_are_parsed_across_two_pages(monkeypatch):
     monkeypatch.setattr(github, "_PAGE_SIZE", 2)
     run = Replay()
-    run.discussion_login = "huoyaoyuan"
+    run.discussion_login = "answerer"
     pages = [
         fixture("graphql-discussion-answers-account-page-1.json"),
         fixture("graphql-discussion-answers-account-page-2.json"),
@@ -489,7 +489,7 @@ def test_recorded_accepted_answers_are_parsed_across_two_pages(monkeypatch):
 
     # Replayed straight through the reader: the search side of the harness is
     # recorded for ixiion001 and says nothing about discussion answers.
-    answers = github._discussion_answers("huoyaoyuan", run)
+    answers = github._discussion_answers("answerer", run)
     assert [(item.repo, item.number) for item in answers] == [
         ("dotnet/csharplang", 2628),
         ("dotnet/roslyn", 49101),

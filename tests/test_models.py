@@ -1,5 +1,5 @@
 import dataclasses
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
@@ -33,3 +33,15 @@ def test_contract_fields():
         "Activity": ["login", "pull_requests", "issues"],
         "Progress": ["name", "count", "tier", "next_threshold", "remaining"],
     }
+
+
+@pytest.mark.parametrize(
+    "stamp",
+    [datetime(2026, 1, 1), datetime(2026, 1, 1, tzinfo=timezone(timedelta(hours=2)))],
+    ids=["naive", "utc+2"],
+)
+def test_timestamps_must_be_utc(stamp):
+    with pytest.raises(ValueError, match="PullRequest.merged_at must be a UTC datetime"):
+        PullRequest("o/r", 1, T0, T0, stamp, reviewed=False)
+    with pytest.raises(ValueError, match="Issue.created_at must be a UTC datetime"):
+        Issue("o/r", 2, stamp, None)

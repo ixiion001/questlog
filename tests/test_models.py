@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
-from questlog.models import Activity, DiscussionAnswer, Issue, Progress, PullRequest
+from questlog.models import Activity, DiscussionAnswer, Issue, OwnedRepo, Progress, PullRequest
 
 T0 = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -25,13 +25,14 @@ def test_activity_holds_tuples():
 def test_contract_fields():
     fields = {
         cls.__name__: [f.name for f in dataclasses.fields(cls)]
-        for cls in (PullRequest, Issue, DiscussionAnswer, Activity, Progress)
+        for cls in (PullRequest, Issue, DiscussionAnswer, OwnedRepo, Activity, Progress)
     }
     assert fields == {
         "PullRequest": ["repo", "number", "created_at", "closed_at", "merged_at", "reviewed"],
         "Issue": ["repo", "number", "created_at", "closed_at"],
         "DiscussionAnswer": ["repo", "number", "created_at"],
-        "Activity": ["login", "pull_requests", "issues", "discussion_answers"],
+        "OwnedRepo": ["name", "stars"],
+        "Activity": ["login", "pull_requests", "issues", "discussion_answers", "owned_repos"],
         "Progress": ["name", "count", "tier", "next_threshold", "remaining"],
     }
 
@@ -40,6 +41,12 @@ def test_activity_without_discussion_answers_defaults_to_none_found():
     answer = DiscussionAnswer("o/r", 3, T0)
     assert Activity("octocat", (), ()).discussion_answers == ()
     assert Activity("octocat", (), (), (answer,)).discussion_answers[0].number == 3
+
+
+def test_activity_without_owned_repos_defaults_to_empty():
+    repo = OwnedRepo("octocat/hello", 42)
+    assert Activity("octocat", (), ()).owned_repos == ()
+    assert Activity("octocat", (), (), owned_repos=(repo,)).owned_repos[0].stars == 42
 
 
 @pytest.mark.parametrize(

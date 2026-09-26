@@ -51,11 +51,20 @@ class DiscussionAnswer:
 
 
 @dataclass(frozen=True)
+class OwnedRepo:
+    """A repository you own, with its star count."""
+
+    name: str
+    stars: int
+
+
+@dataclass(frozen=True)
 class Activity:
     login: str
     pull_requests: tuple[PullRequest, ...]
     issues: tuple[Issue, ...]
     discussion_answers: tuple[DiscussionAnswer, ...] = ()
+    owned_repos: tuple[OwnedRepo, ...] = ()
 
 
 @dataclass(frozen=True)

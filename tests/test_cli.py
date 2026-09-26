@@ -18,11 +18,12 @@ def test_main_empty_argv_shows_help(capsys):
     assert "explain" in captured.out
 
 
-def test_version_flag(capsys):
+def test_version_flag_matches_metadata(capsys):
     ret = main(["--version"])
     assert ret == 0
     captured = capsys.readouterr()
     assert captured.out.strip() == f"questlog {__version__}"
+    assert importlib.metadata.version("questlog") == __version__
 
 
 def test_python_m_questlog_shows_help():

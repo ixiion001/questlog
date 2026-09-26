@@ -674,9 +674,10 @@ def test_owned_repos_stop_after_one_page_even_when_more_exist():
     assert len([call for call in run.calls if "stargazerCount" in call["query"]]) == 1
 
 
-def test_zero_star_repositories_and_forks_count():
-    # The query keeps every repository the user owns, forks included; this pins
-    # the fork decision asked for in the model change's second-opinion review.
+def test_zero_star_repositories_count_and_forks_are_not_filtered():
+    # Forks count because the query filters only on ownership; the absence of
+    # any fork filter is the pin asked for in the second-opinion review.
+    assert "isFork" not in github._OWNED_REPOS_QUERY
     run = Replay()
     run.owned_pages[0]["data"]["user"]["repositories"]["nodes"] = [
         {"nameWithOwner": "octocat/forked-thing", "stargazerCount": 0}

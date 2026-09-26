@@ -275,10 +275,12 @@ def _discussion_answers(login: str, run: Callable) -> list[DiscussionAnswer]:
 def _owned_repos(login: str, run: Callable) -> tuple[OwnedRepo, ...]:
     """Collect the repositories the user owns, most stars first.
 
-    One bounded page is the whole story by design: the first node holds the
-    most stars of any repository the user owns, which is all any rule needs.
-    Forks count because they are repositories the user owns. A repeated
-    repository name means the response cannot be trusted.
+    One bounded page is the whole story by design: the query orders by
+    STARGAZERS DESC, so the first node holds the most stars of any
+    repository the user owns, which is all any rule needs. The query
+    filters only on ownership, so forks and private repositories the
+    login can see are included. A repeated repository name means the
+    response cannot be trusted.
     """
     repos: list[OwnedRepo] = []
     seen: set[str] = set()

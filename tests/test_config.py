@@ -24,3 +24,15 @@ def test_bad_thresholds_are_an_error(thresholds):
     text = f"bad: {{label: X, summary: Y, thresholds: {thresholds}}}"
     with pytest.raises(ValueError, match="strictly increasing"):
         load_achievements(text)
+
+
+def test_top_level_must_be_a_mapping():
+    with pytest.raises(ValueError, match="must be a mapping"):
+        load_achievements("- pull_shark")
+
+
+@pytest.mark.parametrize("thresholds", ["[1.9, 3]", "[true, 2]", "[x]"])
+def test_thresholds_must_be_whole_numbers(thresholds):
+    text = f"bad: {{label: X, summary: Y, thresholds: {thresholds}}}"
+    with pytest.raises(ValueError, match="bad: thresholds must be whole numbers"):
+        load_achievements(text)

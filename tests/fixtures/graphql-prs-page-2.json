@@ -1,0 +1,49 @@
+{
+  "data": {
+    "search": {
+      "issueCount": 4,
+      "pageInfo": {
+        "hasNextPage": false,
+        "endCursor": "Y3Vyc29yOjQ="
+      },
+      "nodes": [
+        {
+          "__typename": "PullRequest",
+          "id": "PR_kwDOSuEWNc8AAAABBFWQCw",
+          "number": 1,
+          "createdAt": "2026-08-26T13:49:23Z",
+          "closedAt": "2026-08-27T14:51:03Z",
+          "mergedAt": null,
+          "repository": {
+            "nameWithOwner": "vitaly-andr/zed"
+          },
+          "reviews": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false,
+              "endCursor": null
+            }
+          }
+        },
+        {
+          "__typename": "PullRequest",
+          "id": "PR_kwDOSuEWNc8AAAABBS4XJQ",
+          "number": 2,
+          "createdAt": "2026-08-28T04:56:58Z",
+          "closedAt": null,
+          "mergedAt": null,
+          "repository": {
+            "nameWithOwner": "vitaly-andr/zed"
+          },
+          "reviews": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false,
+              "endCursor": null
+            }
+          }
+        }
+      ]
+    }
+  }
+}

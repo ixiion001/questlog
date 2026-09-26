@@ -17,6 +17,8 @@ questlog explain pull_shark
 `questlog` never writes to GitHub. It needs `gh` installed and logged in.
 See [docs/usage.md](docs/usage.md) for setup, what each field means, what is
 counted, and how to fix common errors.
+[docs/rules.md](docs/rules.md) explains how each achievement is counted and
+where a count can differ from your GitHub profile.
 
 ## Development
 

@@ -10,6 +10,7 @@ from questlog.models import Activity, Issue, PullRequest
 
 _PAGE_SIZE = 100
 _SEARCH_LIMIT = 1000
+_SEARCH_ATTEMPTS = 3
 _START = datetime(1970, 1, 1, tzinfo=UTC)
 _SECOND = timedelta(seconds=1)
 _SEARCH_QUERY = """query($search: String!, $first: Int!, $after: String) {
@@ -49,6 +50,10 @@ _REVIEWS_QUERY = """query($id: ID!, $first: Int!, $after: String) {
 
 class GitHubError(RuntimeError):
     """The CLI or API could not provide complete activity."""
+
+
+class _SearchChanged(Exception):
+    """A search window must be restarted because its result count changed."""
 
 
 def gh_json(args: list[str]) -> dict | list:
@@ -147,6 +152,19 @@ def _next_cursor(connection: dict, seen: set[str]) -> str | None:
 
 
 def _search_window(query: str, start: datetime, end: datetime, run: Callable) -> list[dict]:
+    for _ in range(_SEARCH_ATTEMPTS):
+        try:
+            return _search_window_once(query, start, end, run)
+        except _SearchChanged:
+            # Restart with fresh nodes and cursors, leaving completed sibling
+            # windows alone. Other errors must not consume another retry budget.
+            continue
+    raise GitHubError(
+        f"GitHub activity changed during pagination after {_SEARCH_ATTEMPTS} attempts. Try again."
+    )
+
+
+def _search_window_once(query: str, start: datetime, end: datetime, run: Callable) -> list[dict]:
     search = f"{query} created:{start.isoformat()}..{end.isoformat()} sort:created-asc"
     connection = _object(_graphql(run, _SEARCH_QUERY, search=search)["search"])
     count = connection["issueCount"]
@@ -166,7 +184,7 @@ def _search_window(query: str, start: datetime, end: datetime, run: Callable) ->
     cursors: set[str] = set()
     while True:
         if connection["issueCount"] != count:
-            raise GitHubError("GitHub activity changed during pagination. Try again.")
+            raise _SearchChanged
         nodes.extend(_nodes(connection))
         after = _next_cursor(connection, cursors)
         if after is None:
@@ -205,6 +223,7 @@ def fetch_activity(login: str, run: Callable[[list[str]], dict | list] = gh_json
     only overflowing review connections need follow-up requests. ``reviewed``
     means any submitted review except PENDING (including comments/dismissals).
     For merged PRs, only reviews submitted at or before the merge count.
+    A search window whose result count changes is restarted at most twice.
     All timestamps are aware UTC. Incomplete API responses raise GitHubError.
     """
     if not isinstance(login, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}", login):

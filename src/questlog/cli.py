@@ -1,5 +1,171 @@
 """Command line entry point: ``questlog status`` and ``questlog explain NAME``."""
 
+import argparse
+import importlib
+import sys
+from collections.abc import Callable
 
-def main(argv: list[str] | None = None) -> int:
-    raise NotImplementedError
+from questlog.config import Achievement, load_achievements
+from questlog.github import fetch_activity, gh_json
+from questlog.models import Activity, Progress
+from questlog.report import render_json, render_text
+
+
+def evaluate_achievements(
+    activity: Activity,
+    achievements: dict[str, Achievement],
+) -> list[Progress]:
+    """Import and evaluate rule modules for each configured achievement."""
+    progress_list: list[Progress] = []
+    for key, achievement in achievements.items():
+        module_name = f"questlog.rules.{key}"
+        try:
+            module = importlib.import_module(module_name)
+        except ModuleNotFoundError as exc:
+            # If the rule module for this specific achievement hasn't been implemented yet, skip
+            if exc.name == module_name:
+                continue
+            raise
+        evaluate_fn = getattr(module, "evaluate", None)
+        if callable(evaluate_fn):
+            progress = evaluate_fn(activity, list(achievement.thresholds))
+            progress_list.append(progress)
+    return progress_list
+
+
+def handle_status(
+    args: argparse.Namespace,
+    run: Callable[[list[str]], dict | list],
+) -> int:
+    """Handle ``questlog status``."""
+    try:
+        achievements = load_achievements()
+    except Exception as exc:
+        sys.stderr.write(f"Error loading achievements configuration: {exc}\n")
+        return 1
+
+    login = args.user
+    if not login:
+        try:
+            user_data = run(["api", "user"])
+            if isinstance(user_data, dict) and "login" in user_data:
+                login = str(user_data["login"])
+            else:
+                sys.stderr.write(
+                    "Error: Could not determine GitHub user from 'gh api user'. "
+                    "Please specify --user or log in via 'gh auth login'.\n"
+                )
+                return 1
+        except Exception as exc:
+            sys.stderr.write(
+                f"Error determining GitHub user: {exc}\n"
+                "Please specify --user or log in via 'gh auth login'.\n"
+            )
+            return 1
+
+    try:
+        activity = fetch_activity(login, run=run)
+    except Exception as exc:
+        sys.stderr.write(f"Error fetching activity for '{login}': {exc}\n")
+        return 1
+
+    progress_list = evaluate_achievements(activity, achievements)
+    labels = {ach.key: ach.label for ach in achievements.values()}
+
+    if args.json:
+        sys.stdout.write(render_json(progress_list))
+    else:
+        sys.stdout.write(render_text(progress_list, labels=labels))
+
+    return 0
+
+
+def handle_explain(args: argparse.Namespace) -> int:
+    """Handle ``questlog explain NAME``."""
+    try:
+        achievements = load_achievements()
+    except Exception as exc:
+        sys.stderr.write(f"Error loading achievements configuration: {exc}\n")
+        return 1
+
+    key = args.name.lower()
+    ach = achievements.get(key)
+    if not ach:
+        # Also try matching label
+        for a in achievements.values():
+            if a.label.lower() == key:
+                ach = a
+                break
+
+    if not ach:
+        available = ", ".join(achievements.keys())
+        sys.stderr.write(f"Unknown achievement: '{args.name}'. Available: {available}\n")
+        return 1
+
+    lines = [
+        f"{ach.label} ({ach.key})",
+        ach.summary,
+        "",
+        "Tiers:",
+    ]
+    for i, threshold in enumerate(ach.thresholds, 1):
+        lines.append(f"  Tier {i}: {threshold}")
+
+    sys.stdout.write("\n".join(lines) + "\n")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line argument parser."""
+    parser = argparse.ArgumentParser(
+        prog="questlog",
+        description="A read-only quest log of your GitHub achievement progress.",
+    )
+    subparsers = parser.add_subparsers(dest="command")
+
+    status_parser = subparsers.add_parser("status", help="Show progress on tracked achievements")
+    status_parser.add_argument("--json", action="store_true", help="Output progress as JSON")
+    status_parser.add_argument(
+        "--user",
+        type=str,
+        default=None,
+        help="GitHub username (defaults to authenticated user via gh)",
+    )
+
+    explain_parser = subparsers.add_parser("explain", help="Explain an achievement and its tiers")
+    explain_parser.add_argument("name", type=str, help="Achievement name or key to explain")
+
+    return parser
+
+
+def main(
+    argv: list[str] | None = None,
+    run: Callable[[list[str]], dict | list] | None = None,
+) -> int:
+    """Command-line entry point."""
+    if argv is None:
+        argv = sys.argv[1:]
+    if run is None:
+        run = gh_json
+
+    parser = build_parser()
+    if not argv:
+        parser.print_help()
+        return 0
+
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return exc.code if isinstance(exc.code, int) else 0
+
+    if args.command == "status":
+        return handle_status(args, run=run)
+    elif args.command == "explain":
+        return handle_explain(args)
+    else:
+        parser.print_help()
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

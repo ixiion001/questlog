@@ -342,3 +342,90 @@ def test_cli_execution_errors(monkeypatch, error, message):
     monkeypatch.setattr(subprocess, "run", run)
     with pytest.raises(GitHubError, match=message):
         gh_json(["api", "graphql"])
+
+
+@pytest.mark.parametrize("changes", [1, 2])
+def test_recorded_search_recovers_from_count_changes_without_stale_results(changes):
+    recorded = Replay()
+    attempts = 0
+
+    def run(args):
+        nonlocal attempts
+        value = variables(args)
+        page = recorded(args)
+        if "is:pr" in value["search"]:
+            if "after" not in value:
+                attempts += 1
+                if attempts <= changes:
+                    page["data"]["search"]["nodes"][0]["number"] = 999999
+            elif attempts <= changes:
+                page["data"]["search"]["issueCount"] += 1
+        return page
+
+    result = fetch_activity("ixiion001", run)
+    assert attempts == changes + 1
+    assert [pr.number for pr in result.pull_requests] == [6, 1, 1, 2]
+    assert len(result.issues) == 1
+    searches = [call for call in recorded.calls if "is:pr" in call["search"]]
+    assert len(searches) == 2 * (changes + 1)
+    assert len({call["search"] for call in searches}) == 1
+    assert ["after" in call for call in searches] == [False, True] * (changes + 1)
+
+
+def test_changing_search_stops_after_three_attempts():
+    recorded = Replay()
+    recorded.pages["second"]["data"]["search"]["issueCount"] += 1
+    with pytest.raises(GitHubError, match="changed during pagination.*3 attempts"):
+        fetch_activity("ixiion001", recorded)
+    assert len(recorded.calls) == 6
+    assert all("is:pr" in call["search"] for call in recorded.calls)
+    assert ["after" in call for call in recorded.calls] == [False, True] * 3
+
+
+@pytest.mark.parametrize("keeps_changing", [False, True])
+def test_only_changing_child_window_restarts(keeps_changing):
+    recorded = Replay()
+    nodes = recorded.pages["first"]["data"]["search"]["nodes"]
+    second_nodes = recorded.pages["second"]["data"]["search"]["nodes"]
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    end = start + timedelta(seconds=3)
+    left = (start, start + timedelta(seconds=1))
+    right = (start + timedelta(seconds=2), end)
+    calls = []
+    attempts = 0
+
+    def run(args):
+        nonlocal attempts
+        value = variables(args)
+        bounds = window(value["search"])
+        calls.append(bounds)
+        if bounds == (start, end):
+            return response([], 1000)
+        if bounds == left:
+            assert "after" not in value
+            return response(nodes)
+        assert bounds == right
+        if "after" not in value:
+            attempts += 1
+            return response(second_nodes[:1], 2, True, "right-first")
+        assert value["after"] == "right-first"
+        changed = keeps_changing or attempts == 1
+        return response(second_nodes[1:], 3 if changed else 2)
+
+    if keeps_changing:
+        with pytest.raises(GitHubError, match="3 attempts"):
+            github._search_window("is:pr", start, end, run)
+        assert attempts == 3
+    else:
+        result = github._search_window("is:pr", start, end, run)
+        assert result == nodes + second_nodes
+        assert attempts == 2
+    assert calls == [(start, end), left] + [right] * (2 * attempts)
+
+
+def test_graphql_failure_is_not_retried():
+    recorded = Replay()
+    recorded.pages["second"]["errors"] = [{"message": "rate limit exceeded"}]
+    with pytest.raises(GitHubError, match="GraphQL returned errors"):
+        fetch_activity("ixiion001", recorded)
+    assert len(recorded.calls) == 2

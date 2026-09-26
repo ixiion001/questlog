@@ -138,6 +138,110 @@ def test_status_skips_missing_rule_module_with_a_note(monkeypatch, capsys):
     assert "Note: rule module 'questlog.rules.yolo' not available; skipping.\n" in captured.err
 
 
+def _install_rules(monkeypatch, evaluated):
+    def fake_run(args):
+        return {}
+
+    def fake_fetch_activity(login, run=None):
+        return Activity(login, (), ())
+
+    monkeypatch.setattr("questlog.cli.fetch_activity", fake_fetch_activity)
+
+    def rule(name, progress):
+        module = types.ModuleType(f"questlog.rules.{name}")
+
+        def evaluate(activity, thresholds):
+            evaluated.append(name)
+            return progress
+
+        module.evaluate = evaluate
+        monkeypatch.setitem(sys.modules, f"questlog.rules.{name}", module)
+
+    rule("pull_shark", Progress("pull_shark", 3, 1, 16, 13))
+    rule("yolo", Progress("yolo", 1, 1, None, None))
+    return fake_run
+
+
+def test_status_only_shows_selected_achievement(monkeypatch, capsys):
+    evaluated = []
+    run = _install_rules(monkeypatch, evaluated)
+
+    ret = main(["status", "--user", "testuser", "--only", "yolo"], run=run)
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert captured.out == "[x] YOLO (Tier 1): [####################] 1 (completed)\n"
+    assert evaluated == ["yolo"]
+
+
+def test_status_only_keeps_config_order_and_skips_others(monkeypatch, capsys):
+    evaluated = []
+    run = _install_rules(monkeypatch, evaluated)
+
+    ret = main(["status", "--user", "testuser", "--only", "yolo,pull_shark"], run=run)
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == [
+        "[ ] Pull Shark (Tier 1): [###-----------------] 3/16 (13 remaining)",
+        "[x] YOLO (Tier 1): [####################] 1 (completed)",
+    ]
+    assert evaluated == ["pull_shark", "yolo"]
+
+
+def test_status_only_ignores_case_and_whitespace(monkeypatch, capsys):
+    evaluated = []
+    run = _install_rules(monkeypatch, evaluated)
+
+    ret = main(["status", "--user", "testuser", "--only", " PULL_SHARK "], run=run)
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "Pull Shark" in captured.out
+    assert evaluated == ["pull_shark"]
+
+
+def test_status_only_unknown_key_lists_valid_ones(monkeypatch, capsys):
+    from questlog.config import load_achievements
+
+    evaluated = []
+    run = _install_rules(monkeypatch, evaluated)
+
+    ret = main(["status", "--user", "testuser", "--only", "nope,bogus"], run=run)
+    assert ret == 1
+    captured = capsys.readouterr()
+    assert "Unknown achievement key(s): 'bogus', 'nope'. " in captured.err
+    expected_available = ", ".join(load_achievements())
+    assert f"Available: {expected_available}\n" in captured.err
+    assert captured.out == ""
+    assert evaluated == []
+
+
+def test_status_only_empty_selection_is_error(monkeypatch, capsys):
+    from questlog.config import load_achievements
+
+    evaluated = []
+    run = _install_rules(monkeypatch, evaluated)
+
+    for empty_input in ("", "   ", ",", " ,  , "):
+        ret = main(["status", "--user", "testuser", "--only", empty_input], run=run)
+        assert ret == 1
+        captured = capsys.readouterr()
+        expected_available = ", ".join(load_achievements())
+        assert f"No achievements selected. Available: {expected_available}\n" in captured.err
+        assert captured.out == ""
+        assert evaluated == []
+
+
+def test_status_only_with_json(monkeypatch, capsys):
+    evaluated = []
+    run = _install_rules(monkeypatch, evaluated)
+
+    ret = main(["status", "--user", "testuser", "--only", "yolo", "--json"], run=run)
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert json.loads(captured.out) == [
+        {"name": "yolo", "count": 1, "tier": 1, "next_threshold": None, "remaining": None}
+    ]
+
+
 def test_status_json(monkeypatch, capsys):
     def fake_run(args):
         return {}

@@ -42,6 +42,22 @@ def evaluate_achievements(
     return progress_list
 
 
+def select_achievements(
+    achievements: dict[str, Achievement],
+    only: str | None,
+) -> tuple[dict[str, Achievement], list[str]]:
+    """Pick the achievements named in ``only`` (in config order) and list unknown keys.
+
+    ``only`` is a comma-separated list of keys, matched case-insensitively with
+    surrounding whitespace ignored. ``None`` selects every achievement.
+    """
+    if only is None:
+        return achievements, []
+    requested = {key.strip().lower() for key in only.split(",") if key.strip()}
+    unknown = sorted(requested - achievements.keys())
+    return {key: ach for key, ach in achievements.items() if key in requested}, unknown
+
+
 def handle_status(
     args: argparse.Namespace,
     run: Callable[[list[str]], dict | list],
@@ -52,6 +68,19 @@ def handle_status(
     except Exception as exc:
         sys.stderr.write(f"Error loading achievements configuration: {_format_error(exc)}\n")
         return 1
+
+    if args.only is not None:
+        selected, unknown = select_achievements(achievements, args.only)
+        if unknown:
+            names = ", ".join(repr(key) for key in unknown)
+            available = ", ".join(achievements)
+            sys.stderr.write(f"Unknown achievement key(s): {names}. Available: {available}\n")
+            return 1
+        if not selected:
+            available = ", ".join(achievements)
+            sys.stderr.write(f"No achievements selected. Available: {available}\n")
+            return 1
+        achievements = selected
 
     login = args.user
     if not login:
@@ -150,6 +179,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="GitHub username (defaults to authenticated user via gh)",
+    )
+    status_parser.add_argument(
+        "--only",
+        type=str,
+        default=None,
+        help="Comma-separated achievement keys to show (default: all)",
     )
 
     explain_parser = subparsers.add_parser("explain", help="Explain an achievement and its tiers")

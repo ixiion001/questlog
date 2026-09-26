@@ -115,6 +115,8 @@ Tiers:
 - GitHub may show an achievement on your profile some time after you reach a
   threshold, and it can change its rules without notice. The thresholds live
   in `src/questlog/achievements.yaml`.
+- [How each achievement is counted](rules.md) lists what every rule counts
+  and where it is an approximation.
 
 ## Exit codes and errors
 

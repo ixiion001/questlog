@@ -100,8 +100,8 @@ def test_recorded_activity_is_batched_paginated_and_utc(monkeypatch):
     assert all(
         item.created_at.tzinfo is UTC for item in (*activity.pull_requests, *activity.issues)
     )
-    searches = [call for call in run.calls if "search" in call]
-    assert len(searches) == 3  # Two PR pages and one issue page; no per-PR calls.
+    # Two PR pages, one issue page and one discussion page; no per-PR calls.
+    assert len(run.calls) == 4
     assert all(call["first"] == "2" for call in run.calls)
 
 
@@ -164,7 +164,7 @@ def test_existing_qualifying_review_needs_no_further_pages():
         "pageInfo": {"hasNextPage": True, "endCursor": "more"},
     }
     assert fetch_activity("ixiion001", run).pull_requests[0].reviewed
-    assert len([call for call in run.calls if "search" in call]) == 3
+    assert len(run.calls) == 4
 
 
 def response(nodes, count=None, has_next=False, cursor=None):
@@ -381,6 +381,8 @@ def test_recorded_search_recovers_from_count_changes_without_stale_results(chang
     assert len(searches) == 2 * (changes + 1)
     assert len({call["search"] for call in searches}) == 1
     assert ["after" in call for call in searches] == [False, True] * (changes + 1)
+    # The PR pages above, one issue page and one discussion page.
+    assert len(recorded.calls) == 2 * (changes + 1) + 2
 
 
 def test_changing_search_stops_after_three_attempts():
@@ -388,10 +390,11 @@ def test_changing_search_stops_after_three_attempts():
     recorded.pages["second"]["data"]["search"]["issueCount"] += 1
     with pytest.raises(GitHubError, match="changed during pagination.*3 attempts"):
         fetch_activity("ixiion001", recorded)
-    searches = [call for call in recorded.calls if "search" in call]
-    assert len(searches) == 6
-    assert all("is:pr" in call["search"] for call in searches)
-    assert ["after" in call for call in searches] == [False, True] * 3
+    # The search fails before the discussion page is ever requested.
+    assert len(recorded.calls) == 6
+    assert not [call for call in recorded.calls if "login" in call]
+    assert all("is:pr" in call["search"] for call in recorded.calls)
+    assert ["after" in call for call in recorded.calls] == [False, True] * 3
 
 
 @pytest.mark.parametrize("keeps_changing", [False, True])
@@ -440,7 +443,7 @@ def test_graphql_failure_is_not_retried():
     recorded.pages["second"]["errors"] = [{"message": "rate limit exceeded"}]
     with pytest.raises(GitHubError, match="GraphQL returned errors"):
         fetch_activity("ixiion001", recorded)
-    assert len([call for call in recorded.calls if "search" in call]) == 2
+    assert len(recorded.calls) == 2
 
 
 def answers_page(nodes, has_next=False, cursor=None):
@@ -463,6 +466,11 @@ def answer(repo, number, created="2026-02-03T09:15:00Z"):
         "createdAt": created,
         "discussion": {"number": number, "repository": {"nameWithOwner": repo}},
     }
+
+
+def one_node(discussion, created="2026-02-03T09:15:00Z"):
+    """A single-answer response whose discussion and timestamp the caller controls."""
+    return answers_page([{"createdAt": created, "discussion": discussion}])
 
 
 def test_recorded_account_has_no_accepted_discussion_answers():
@@ -552,17 +560,67 @@ def test_discussion_pagination_does_not_loop_on_repeated_cursor():
 
 
 @pytest.mark.parametrize(
-    "problem",
+    ("problem", "message"),
     [
-        {"data": {"user": {}}},
-        {"data": {"user": {"repositoryDiscussionComments": {"nodes": [], "pageInfo": {}}}}},
-        {"data": {"user": {"repositoryDiscussionComments": {"nodes": [{"createdAt": None}]}}}},
-        {"data": {"user": {"repositoryDiscussionComments": {"nodes": [{"createdAt": "x"}]}}}},
+        ({"data": {"user": {}}}, "incomplete discussion response"),
+        (
+            {"data": {"user": {"repositoryDiscussionComments": {"nodes": [], "pageInfo": {}}}}},
+            "incomplete discussion response",
+        ),
+        (
+            one_node({"number": 7, "repository": {"nameWithOwner": "a/repo"}}, created=None),
+            "missing or invalid timestamp",
+        ),
+        (
+            one_node({"number": 7, "repository": {"nameWithOwner": "a/repo"}}, created="x"),
+            "without a valid timezone",
+        ),
+        (
+            one_node(
+                {"number": 7, "repository": {"nameWithOwner": "a/repo"}},
+                created="2026-05-01T10:00:00",
+            ),
+            "without a valid timezone",
+        ),
+        (
+            one_node({"number": 0, "repository": {"nameWithOwner": "a/repo"}}),
+            "invalid discussion identifiers",
+        ),
+        (
+            one_node({"number": -1, "repository": {"nameWithOwner": "a/repo"}}),
+            "invalid discussion identifiers",
+        ),
+        (
+            one_node({"number": "7", "repository": {"nameWithOwner": "a/repo"}}),
+            "invalid discussion identifiers",
+        ),
+        (
+            one_node({"number": 7, "repository": {"nameWithOwner": ""}}),
+            "invalid discussion identifiers",
+        ),
+        (one_node({"number": 7, "repository": {}}), "incomplete discussion response"),
+        (one_node({"number": 7}), "incomplete discussion response"),
+        (one_node({"number": 7, "repository": None}), "invalid response object"),
+        (
+            {"data": {"user": {"repositoryDiscussionComments": {"nodes": None, "pageInfo": {}}}}},
+            "invalid or inaccessible result node",
+        ),
     ],
 )
-def test_incomplete_discussion_response_is_not_reported_as_success(problem):
-    with pytest.raises(GitHubError):
-        fetch_activity("ixiion001", lambda _: problem)
+def test_malformed_discussion_response_is_not_reported_as_success(problem, message):
+    # Only the discussion request is malformed. Feeding the same payload to the
+    # search would let the search reject it, and the case would pass for the
+    # wrong reason while the discussion reader went untested.
+    recorded = Replay()
+
+    def run(args):
+        if "login" in variables(args):
+            return problem
+        return recorded(args)
+
+    with pytest.raises(GitHubError, match=message):
+        fetch_activity("ixiion001", run)
+    assert [call for call in recorded.calls if "search" in call]
 
 
 def test_discussion_failures_are_not_hidden_by_the_activity_search():

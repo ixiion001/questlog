@@ -6,7 +6,7 @@ GitHub.
 
 ## Before you start
 
-- Python 3.12 or newer.
+- Python 3.12 or newer and [uv](https://docs.astral.sh/uv/).
 - The [GitHub CLI](https://cli.github.com/) (`gh`), logged in:
 
   ```sh
@@ -112,8 +112,8 @@ Tiers:
   more requests but are counted in full.
 - If GitHub returns incomplete or inconsistent data, `questlog` stops with an
   error rather than reporting a partial count.
-- GitHub itself can take up to a day to award an achievement after you reach
-  a threshold, and it changes its rules without notice. The thresholds live
+- GitHub may show an achievement on your profile some time after you reach a
+  threshold, and it can change its rules without notice. The thresholds live
   in `src/questlog/achievements.yaml`.
 
 ## Exit codes and errors

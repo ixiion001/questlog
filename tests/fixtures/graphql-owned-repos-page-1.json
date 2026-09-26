@@ -1,0 +1,30 @@
+{
+  "data": {
+    "user": {
+      "repositories": {
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": "Y3Vyc29yOnYyOpLNAeDOB-xv4A=="
+        },
+        "nodes": [
+          {
+            "nameWithOwner": "octocat/Spoon-Knife",
+            "stargazerCount": 14062
+          },
+          {
+            "nameWithOwner": "octocat/Hello-World",
+            "stargazerCount": 3831
+          },
+          {
+            "nameWithOwner": "octocat/octocat.github.io",
+            "stargazerCount": 1174
+          },
+          {
+            "nameWithOwner": "octocat/boysenberry-repo-1",
+            "stargazerCount": 480
+          }
+        ]
+      }
+    }
+  }
+}

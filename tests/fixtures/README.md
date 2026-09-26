@@ -1,7 +1,9 @@
 # Recorded GitHub API fixtures
 
-Captured on 2026-09-26 with the authenticated GitHub CLI. All samples are public
-activity authored by `ixiion001`; no private repository data is included.
+Captured on 2026-09-26 with the authenticated GitHub CLI. All samples are
+public activity: most are authored by `ixiion001`, and the accepted-answers
+pages come from `huoyaoyuan`, a public account used because `ixiion001` has no
+accepted answers to capture. No private repository data is included.
 GraphQL selects only the identifiers, timestamps, review state and pagination
 metadata used by the reader, preserving the returned values and counts.
 
@@ -46,13 +48,42 @@ The accepted-answers reader uses `_DISCUSSIONS_QUERY` in
 ]
 ```
 
-This capture is empty and is the whole story for that account: `ixiion001` has
-no discussion answers marked as accepted, so the real response has no nodes
-and no next page. It pins the response envelope
-(`data.user.repositoryDiscussionComments`) and the empty case. Discussion
-answers with content, second pages, repeated cursors and duplicate answers are
-synthetic variations in tests, shaped from this envelope, and are not claims
-about real users.
+`graphql-discussion-answers-page-1.json` is empty, and that is the whole story
+for `ixiion001`: the account has no discussion answers marked as accepted, so
+the real response has no nodes and no next page. It pins the response envelope
+(`data.user.repositoryDiscussionComments`) and the empty case.
+
+An empty capture cannot show that nodes parse, so the two page files below are
+real captures for `huoyaoyuan`, a public account with accepted answers, using
+the same query and page size 2:
+
+```json
+[
+  {
+    "file": "graphql-discussion-answers-account-page-1.json",
+    "login": "huoyaoyuan",
+    "first": 2,
+    "after": null
+  },
+  {
+    "file": "graphql-discussion-answers-account-page-2.json",
+    "login": "huoyaoyuan",
+    "first": 2,
+    "after": "Y3Vyc29yOnYyOpHOAAHNSQ=="
+  }
+]
+```
+
+That account has 233 accepted answers, so no real capture is ever the last
+page. The test therefore clears `hasNextPage` on the final page before
+replaying it; that flag is the only synthetic part, and every node, repository
+and timestamp in both files is a real value. The two pages span three
+repositories, so they also cover the case where one number can be shared
+between repositories.
+
+Repeated cursors, duplicate answers and API failures are synthetic variations
+in tests, shaped from these real responses, and are not claims about real
+users.
 
 Tests replay these files with page size 2. The PR sample includes open, merged,
 and closed-unmerged PRs. None has submitted reviews; review states, overflowing

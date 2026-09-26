@@ -46,6 +46,7 @@ class Replay:
             "issues": fixture("graphql-issues-page-1.json"),
         }
         self.discussion_pages = [fixture("graphql-discussion-answers-page-1.json")]
+        self.discussion_login = "ixiion001"
         self.calls = []
         self.review_page = None
 
@@ -56,7 +57,7 @@ class Replay:
             assert self.review_page is not None
             return copy.deepcopy(self.review_page)
         if "login" in value:
-            assert value["login"] == "ixiion001"
+            assert value["login"] == self.discussion_login
             page = self.discussion_pages[0]
             if len(self.discussion_pages) > 1:
                 self.discussion_pages.pop(0)
@@ -471,6 +472,34 @@ def test_recorded_account_has_no_accepted_discussion_answers():
     assert len(asked) == 1
     assert asked[0]["login"] == "ixiion001"
     assert "after" not in asked[0]
+
+
+def test_recorded_accepted_answers_are_parsed_across_two_pages(monkeypatch):
+    monkeypatch.setattr(github, "_PAGE_SIZE", 2)
+    run = Replay()
+    run.discussion_login = "huoyaoyuan"
+    pages = [
+        fixture("graphql-discussion-answers-account-page-1.json"),
+        fixture("graphql-discussion-answers-account-page-2.json"),
+    ]
+    # The account has 233 accepted answers, so a real capture is never the last
+    # page. Only this termination flag is synthetic; every node below is real.
+    pages[-1]["data"]["user"]["repositoryDiscussionComments"]["pageInfo"]["hasNextPage"] = False
+    run.discussion_pages = pages
+
+    # Replayed straight through the reader: the search side of the harness is
+    # recorded for ixiion001 and says nothing about discussion answers.
+    answers = github._discussion_answers("huoyaoyuan", run)
+    assert [(item.repo, item.number) for item in answers] == [
+        ("dotnet/csharplang", 2628),
+        ("dotnet/roslyn", 49101),
+        ("dotnet/runtime", 43941),
+        ("dotnet/runtime", 43883),
+    ]
+    assert answers[0].created_at == datetime(2019, 7, 3, 12, 42, 47, tzinfo=UTC)
+    assert all(item.created_at.tzinfo is UTC for item in answers)
+    asked = [call for call in run.calls if "login" in call]
+    assert [call.get("after") for call in asked] == [None, "Y3Vyc29yOnYyOpHOAAHNSQ=="]
 
 
 def test_accepted_answers_are_paginated_sorted_and_utc(monkeypatch):

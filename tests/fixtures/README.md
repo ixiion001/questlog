@@ -54,9 +54,11 @@ for `ixiion001`: the account has no discussion answers marked as accepted, so
 the real response has no nodes and no next page. It pins the response envelope
 (`data.user.repositoryDiscussionComments`) and the empty case.
 
-An empty capture cannot show that nodes parse, so the two page files below were
-recorded from a public account with accepted answers, using the same query and
-page size 2:
+An empty capture cannot show that nodes parse, so the two page files below are
+the first two pages of a real capture, taken from a public account with 233
+accepted answers, using the same query and page size 2. The capture was made
+with that account's real login; the tests replay it under the `answerer` alias,
+so the login below is the replay value, not the one the request used:
 
 ```json
 [
@@ -75,12 +77,13 @@ page size 2:
 ]
 ```
 
-That account has 233 accepted answers, so no real capture is ever the last
-page. The test therefore clears `hasNextPage` on the final page before
-replaying it; that flag is the only synthetic part, and every node, repository
-and timestamp in both files is a real value. The two pages span three
-repositories, so they also cover the case where one number can be shared
-between repositories.
+These are the first two pages of that account's answers, not its last page, and
+not a complete record: the account has 233 accepted answers, so a capture of all
+of them would need about a hundred requests. The test therefore clears
+`hasNextPage` on the second page before replaying it so the reader stops there;
+that flag is the only synthetic part, and every node, repository and timestamp
+in both files is a real value. The two pages span three repositories, so they
+also cover the case where one number can be shared between repositories.
 
 Repeated cursors, duplicate answers and API failures are synthetic variations
 in tests, shaped from these real responses, and are not claims about real

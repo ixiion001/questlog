@@ -47,6 +47,7 @@ class Replay:
         }
         self.discussion_pages = [fixture("graphql-discussion-answers-page-1.json")]
         self.discussion_login = "ixiion001"
+        self.owned_pages = [fixture("graphql-owned-repos-page-1.json")]
         self.calls = []
         self.review_page = None
 
@@ -57,6 +58,11 @@ class Replay:
             assert self.review_page is not None
             return copy.deepcopy(self.review_page)
         if "login" in value:
+            if "stargazerCount" in value["query"]:
+                page = self.owned_pages[0]
+                if len(self.owned_pages) > 1:
+                    self.owned_pages.pop(0)
+                return copy.deepcopy(page)
             assert value["login"] == self.discussion_login
             page = self.discussion_pages[0]
             if len(self.discussion_pages) > 1:
@@ -100,8 +106,9 @@ def test_recorded_activity_is_batched_paginated_and_utc(monkeypatch):
     assert all(
         item.created_at.tzinfo is UTC for item in (*activity.pull_requests, *activity.issues)
     )
-    # Two PR pages, one issue page and one discussion page; no per-PR calls.
-    assert len(run.calls) == 4
+    # Two PR pages, one issue page, one discussion page and one owned-repos
+    # page; no per-PR calls.
+    assert len(run.calls) == 5
     assert not [call for call in run.calls if "id" in call]
     assert all(call["first"] == "2" for call in run.calls)
 
@@ -167,7 +174,7 @@ def test_existing_qualifying_review_needs_no_further_pages():
     assert fetch_activity("ixiion001", run).pull_requests[0].reviewed
     # The batched review was enough, so no per-node review query is sent.
     assert not [call for call in run.calls if "id" in call]
-    assert len(run.calls) == 4
+    assert len(run.calls) == 5
 
 
 def response(nodes, count=None, has_next=False, cursor=None):
@@ -209,6 +216,8 @@ def test_fixture_derived_large_history_splits_windows_without_dropping_records(c
     def run(args):
         value = variables(args)
         if "login" in value:
+            if "stargazerCount" in value["query"]:
+                return fixture("graphql-owned-repos-page-1.json")
             return fixture("graphql-discussion-answers-page-1.json")
         if "is:issue" in value["search"]:
             return response([])
@@ -384,8 +393,9 @@ def test_recorded_search_recovers_from_count_changes_without_stale_results(chang
     assert len(searches) == 2 * (changes + 1)
     assert len({call["search"] for call in searches}) == 1
     assert ["after" in call for call in searches] == [False, True] * (changes + 1)
-    # The PR pages above, one issue page and one discussion page.
-    assert len(recorded.calls) == 2 * (changes + 1) + 2
+    # The PR pages above, one issue page, one discussion page and one
+    # owned-repos page.
+    assert len(recorded.calls) == 2 * (changes + 1) + 3
 
 
 def test_changing_search_stops_after_three_attempts():
@@ -393,7 +403,8 @@ def test_changing_search_stops_after_three_attempts():
     recorded.pages["second"]["data"]["search"]["issueCount"] += 1
     with pytest.raises(GitHubError, match="changed during pagination.*3 attempts"):
         fetch_activity("ixiion001", recorded)
-    # The search fails before the discussion page is ever requested.
+    # The search fails before the discussion and owned-repos pages are ever
+    # requested.
     assert len(recorded.calls) == 6
     assert not [call for call in recorded.calls if "login" in call]
     assert all("is:pr" in call["search"] for call in recorded.calls)
@@ -479,7 +490,7 @@ def one_node(discussion, created="2026-02-03T09:15:00Z"):
 def test_recorded_account_has_no_accepted_discussion_answers():
     run = Replay()
     assert fetch_activity("ixiion001", run).discussion_answers == ()
-    asked = [call for call in run.calls if "login" in call]
+    asked = [call for call in run.calls if "repositoryDiscussionComments" in call["query"]]
     assert len(asked) == 1
     assert asked[0]["login"] == "ixiion001"
     assert "after" not in asked[0]
@@ -509,7 +520,7 @@ def test_recorded_accepted_answers_are_parsed_across_two_pages(monkeypatch):
     ]
     assert answers[0].created_at == datetime(2019, 7, 3, 12, 42, 47, tzinfo=UTC)
     assert all(item.created_at.tzinfo is UTC for item in answers)
-    asked = [call for call in run.calls if "login" in call]
+    asked = [call for call in run.calls if "repositoryDiscussionComments" in call["query"]]
     assert [call.get("after") for call in asked] == [None, "Y3Vyc29yOnYyOpHOAAHNSQ=="]
 
 
@@ -533,7 +544,7 @@ def test_accepted_answers_are_paginated_sorted_and_utc(monkeypatch):
     assert all(item.created_at.tzinfo is UTC for item in activity.discussion_answers)
     assert activity.discussion_answers[0].created_at == datetime(2025, 12, 31, 23, tzinfo=UTC)
     assert activity.discussion_answers[2].created_at == datetime(2026, 5, 1, 8, tzinfo=UTC)
-    asked = [call for call in run.calls if "login" in call]
+    asked = [call for call in run.calls if "repositoryDiscussionComments" in call["query"]]
     assert [call.get("after") for call in asked] == [None, "Y3Vyc29yOjE="]
     assert all(call["first"] == "2" for call in asked)
 
@@ -617,7 +628,8 @@ def test_malformed_discussion_response_is_not_reported_as_success(problem, messa
     recorded = Replay()
 
     def run(args):
-        if "login" in variables(args):
+        value = variables(args)
+        if "login" in value and "repositoryDiscussionComments" in value["query"]:
             return problem
         return recorded(args)
 
@@ -629,9 +641,100 @@ def test_malformed_discussion_response_is_not_reported_as_success(problem, messa
 def test_discussion_failures_are_not_hidden_by_the_activity_search():
     def run(args):
         value = variables(args)
-        if "login" in value:
+        if "login" in value and "repositoryDiscussionComments" in value["query"]:
             return {"data": {}, "errors": [{"message": "bad credentials"}]}
         return Replay()(args)
 
     with pytest.raises(GitHubError, match="GraphQL returned errors"):
         fetch_activity("ixiion001", run)
+
+
+def test_recorded_owned_repos_page_keeps_star_order_and_values():
+    run = Replay()
+    repos = fetch_activity("ixiion001", run).owned_repos
+    assert [(repo.name, repo.stars) for repo in repos] == [
+        ("octocat/Spoon-Knife", 14062),
+        ("octocat/Hello-World", 3831),
+        ("octocat/octocat.github.io", 1174),
+        ("octocat/boysenberry-repo-1", 480),
+    ]
+    asked = [call for call in run.calls if "stargazerCount" in call["query"]]
+    assert len(asked) == 1
+    assert asked[0]["login"] == "ixiion001"
+
+
+def test_owned_repos_stop_after_one_page_even_when_more_exist():
+    # One bounded page is the design: the first node holds the most stars of
+    # any repository the user owns, and no rule needs more. Later pages exist
+    # in the API and are deliberately not requested.
+    run = Replay()
+    page = run.owned_pages[0]["data"]["user"]["repositories"]
+    page["pageInfo"] = {"hasNextPage": True, "endCursor": "more-repos"}
+    assert len(fetch_activity("ixiion001", run).owned_repos) == 4
+    assert len([call for call in run.calls if "stargazerCount" in call["query"]]) == 1
+
+
+def test_zero_star_repositories_and_forks_count():
+    # The query keeps every repository the user owns, forks included; this pins
+    # the fork decision asked for in the model change's second-opinion review.
+    run = Replay()
+    run.owned_pages[0]["data"]["user"]["repositories"]["nodes"] = [
+        {"nameWithOwner": "octocat/forked-thing", "stargazerCount": 0}
+    ]
+    repos = fetch_activity("ixiion001", run).owned_repos
+    assert [(repo.name, repo.stars) for repo in repos] == [("octocat/forked-thing", 0)]
+
+
+def test_empty_owned_repos_page_is_an_empty_tuple():
+    run = Replay()
+    run.owned_pages[0]["data"]["user"]["repositories"]["nodes"] = []
+    assert fetch_activity("ixiion001", run).owned_repos == ()
+
+
+@pytest.mark.parametrize(
+    ("problem", "message"),
+    [
+        ({}, "incomplete owned-repositories response"),
+        ({"data": {}}, "incomplete owned-repositories response"),
+        ({"data": {"user": None}}, "invalid response object"),
+        ({"data": {"user": {}}}, "incomplete owned-repositories response"),
+        ({"data": {"user": {"repositories": None}}}, "invalid response object"),
+        ({"data": {"user": {"repositories": {}}}}, "incomplete owned-repositories response"),
+        ("bad-name", "invalid repository data"),
+        ("empty-name", "invalid repository data"),
+        ("invalid-stars", "invalid repository data"),
+        ("negative-stars", "invalid repository data"),
+        ("duplicate", "duplicate owned repository"),
+        ("null-node", "invalid or inaccessible result node"),
+    ],
+)
+def test_malformed_owned_repos_response_is_not_reported_as_success(problem, message):
+    # Only the owned-repos request is malformed, so the search and discussion
+    # readers cannot reject the payload first and mask the case.
+    recorded = Replay()
+
+    def run(args):
+        value = variables(args)
+        if "stargazerCount" in value["query"]:
+            if not isinstance(problem, str):
+                return problem
+            page = recorded.owned_pages[0]
+            nodes = page["data"]["user"]["repositories"]["nodes"]
+            if problem == "bad-name":
+                nodes[0]["nameWithOwner"] = 123
+            elif problem == "empty-name":
+                nodes[0]["nameWithOwner"] = ""
+            elif problem == "invalid-stars":
+                nodes[0]["stargazerCount"] = "many"
+            elif problem == "negative-stars":
+                nodes[0]["stargazerCount"] = -1
+            elif problem == "duplicate":
+                nodes[1] = copy.deepcopy(nodes[0])
+            elif problem == "null-node":
+                nodes[0] = None
+            return copy.deepcopy(page)
+        return recorded(args)
+
+    with pytest.raises(GitHubError, match=message):
+        fetch_activity("ixiion001", run)
+    assert [call for call in recorded.calls if "search" in call]

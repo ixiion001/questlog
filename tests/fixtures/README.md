@@ -99,5 +99,6 @@ synthetic variations in tests rather than claims about these real users.
 (`gh api graphql -f query=<query> -f login=octocat`, no `after` cursor): the
 public repositories of `octocat`, sorted by stars with the most-starred first,
 exactly as the query orders them. Names and counts are unmodified; 4 of the 8
-returned nodes are kept. Empty repository lists, zero stars, and repository
-pagination are explicitly synthetic variations in tests.
+returned nodes are kept. The capture login is `octocat`; tests replay the page
+under whatever login they run. Empty repository lists, zero stars, and
+repository pagination are explicitly synthetic variations in tests.

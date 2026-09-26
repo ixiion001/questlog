@@ -1,0 +1,49 @@
+{
+  "data": {
+    "search": {
+      "issueCount": 4,
+      "pageInfo": {
+        "hasNextPage": true,
+        "endCursor": "Y3Vyc29yOjI="
+      },
+      "nodes": [
+        {
+          "__typename": "PullRequest",
+          "id": "PR_kwDOJaPRlM5QdFGM",
+          "number": 6,
+          "createdAt": "2023-05-14T13:22:56Z",
+          "closedAt": null,
+          "mergedAt": null,
+          "repository": {
+            "nameWithOwner": "isaiahbjork/Auto-GPT-Crypto-Plugin"
+          },
+          "reviews": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false,
+              "endCursor": null
+            }
+          }
+        },
+        {
+          "__typename": "PullRequest",
+          "id": "PR_kwDOOeRBfs6WiByP",
+          "number": 1,
+          "createdAt": "2025-05-17T00:34:26Z",
+          "closedAt": "2025-05-17T00:35:46Z",
+          "mergedAt": "2025-05-17T00:35:46Z",
+          "repository": {
+            "nameWithOwner": "ixiion001/openai-filesearch-mcp"
+          },
+          "reviews": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false,
+              "endCursor": null
+            }
+          }
+        }
+      ]
+    }
+  }
+}

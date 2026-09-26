@@ -104,7 +104,7 @@ def test_status_with_explicit_user(monkeypatch, capsys):
     ret = main(["status", "--user", "testuser"], run=fake_run)
     assert ret == 0
     captured = capsys.readouterr()
-    assert "[ ] Pull Shark (Tier 1): [####----------------] 3/16 (13 remaining)\n" in captured.out
+    assert "[ ] Pull Shark (Tier 1): [###-----------------] 3/16 (13 remaining)\n" in captured.out
     assert "[ ] YOLO (no tier yet): [--------------------] 0/1 (1 remaining)\n" in captured.out
     assert "questlog.rules.yolo' not available" not in captured.err
 
@@ -134,7 +134,7 @@ def test_status_skips_missing_rule_module_with_a_note(monkeypatch, capsys):
     ret = main(["status", "--user", "testuser"], run=fake_run)
     assert ret == 0
     captured = capsys.readouterr()
-    assert "[ ] Pull Shark (Tier 1): [####----------------] 3/16 (13 remaining)\n" in captured.out
+    assert "[ ] Pull Shark (Tier 1): [###-----------------] 3/16 (13 remaining)\n" in captured.out
     assert "Note: rule module 'questlog.rules.yolo' not available; skipping.\n" in captured.err
 
 

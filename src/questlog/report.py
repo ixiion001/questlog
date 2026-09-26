@@ -19,7 +19,8 @@ def _format_bar(count: int, next_threshold: int) -> str:
     threshold).
     """
     ratio = min(1.0, max(0.0, count / next_threshold))
-    filled = round(BAR_WIDTH * ratio)
+    # Floor division so a bar never looks full before its threshold is reached
+    filled = min(BAR_WIDTH, max(0, int(BAR_WIDTH * ratio)))
     return "[" + "#" * filled + "-" * (BAR_WIDTH - filled) + "]"
 
 

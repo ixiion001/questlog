@@ -19,7 +19,7 @@ def test_render_text_in_progress():
     output = render_text(progress)
     expected = (
         "[ ] quickdraw (no tier yet): [--------------------] 0/1 (1 remaining)\n"
-        "[ ] pull_shark (Tier 1): [####----------------] 3/16 (13 remaining)\n"
+        "[ ] pull_shark (Tier 1): [###-----------------] 3/16 (13 remaining)\n"
     )
     assert output == expected
 
@@ -33,7 +33,7 @@ def test_render_text_with_labels():
     output = render_text(progress, labels=labels)
     expected = (
         "[ ] Quickdraw (no tier yet): [--------------------] 0/1 (1 remaining)\n"
-        "[ ] Pull Shark (Tier 1): [####----------------] 3/16 (13 remaining)\n"
+        "[ ] Pull Shark (Tier 1): [###-----------------] 3/16 (13 remaining)\n"
     )
     assert output == expected
 
@@ -69,12 +69,18 @@ def test_bar_fill_grows_with_count():
         return render_text([row]).count("#")
 
     assert fill(0) == 0
-    assert fill(4) < fill(8) < fill(15) <= BAR_WIDTH
+    assert fill(4) <= fill(8) < fill(15) <= BAR_WIDTH
 
 
 def test_bar_fill_is_clamped():
     over = Progress(name="pull_shark", count=32, tier=2, next_threshold=16, remaining=0)
     assert render_text([over]).count("#") == BAR_WIDTH
+
+
+def test_bar_never_fills_completely_before_tier_is_reached():
+    # 127/128 (99.2%) must draw 19 cells, not 20: only a reached threshold is full
+    one_away = Progress(name="pull_shark", count=127, tier=3, next_threshold=128, remaining=1)
+    assert render_text([one_away]).count("#") == BAR_WIDTH - 1
 
 
 def test_render_json_empty():

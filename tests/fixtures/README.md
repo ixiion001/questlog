@@ -1,10 +1,11 @@
 # Recorded GitHub API fixtures
 
-Captured on 2026-09-26 with the authenticated GitHub CLI. All samples are
-public activity: most are authored by `ixiion001`, and the accepted-answers
-pages were recorded from a public account with accepted answers, named
-`answerer` here so no third party is identified. No private repository data is
-included.
+Captured on 2026-09-26 and 2026-09-27 with the authenticated GitHub CLI. All
+samples are public activity: most are authored by `ixiion001`, the
+accepted-answers pages were recorded from a public account with accepted
+answers, named `answerer` here so no third party is identified, and the stars
+sample is public repository data of the `octocat` account, whose name doubles
+as the placeholder login. No private repository data is included.
 GraphQL selects only the identifiers, timestamps, review state and pagination
 metadata used by the reader, preserving the returned values and counts.
 
@@ -93,3 +94,10 @@ Tests replay these files with page size 2. The PR sample includes open, merged,
 and closed-unmerged PRs. None has submitted reviews; review states, overflowing
 review connections, API failures, and high-volume search windows are explicitly
 synthetic variations in tests rather than claims about these real users.
+
+`graphql-owned-repos-page-1.json` is one real response to the owned-repos query
+(`gh api graphql -f query=<query> -f login=octocat`, no `after` cursor): the
+public repositories of `octocat`, sorted by stars with the most-starred first,
+exactly as the query orders them. Names and counts are unmodified; 4 of the 8
+returned nodes are kept. Empty repository lists, zero stars, and repository
+pagination are explicitly synthetic variations in tests.

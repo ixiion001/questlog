@@ -6,7 +6,7 @@ import subprocess
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
-from questlog.models import Activity, Issue, PullRequest
+from questlog.models import Activity, DiscussionAnswer, Issue, PullRequest
 
 _PAGE_SIZE = 100
 _SEARCH_LIMIT = 1000
@@ -41,6 +41,18 @@ _REVIEWS_QUERY = """query($id: ID!, $first: Int!, $after: String) {
       reviews(first: $first, after: $after) {
         nodes { state submittedAt }
         pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}
+"""
+_DISCUSSIONS_QUERY = """query($login: String!, $first: Int!, $after: String) {
+  user(login: $login) {
+    repositoryDiscussionComments(onlyAnswers: true, first: $first, after: $after) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        createdAt
+        discussion { number repository { nameWithOwner } }
       }
     }
   }
@@ -215,8 +227,42 @@ def _reviewed(node: dict, merged_at: datetime | None, run: Callable) -> bool:
         connection = _object(_object(data["node"])["reviews"])
 
 
+def _discussion_answers(login: str, run: Callable) -> list[DiscussionAnswer]:
+    """Collect the discussion answers the user wrote that GitHub accepted.
+
+    ``onlyAnswers`` means every node is already an accepted answer. A
+    discussion holds a single accepted answer, so ``(repo, number)`` identifies
+    one uniquely; seeing it twice means the response cannot be trusted.
+    """
+    answers: list[DiscussionAnswer] = []
+    seen: set[tuple[str, int]] = set()
+    cursors: set[str] = set()
+    try:
+        data = _graphql(run, _DISCUSSIONS_QUERY, login=login)
+        connection = _object(_object(data["user"])["repositoryDiscussionComments"])
+        while True:
+            for node in _nodes(connection):
+                discussion = _object(node["discussion"])
+                repo = _object(discussion["repository"])["nameWithOwner"]
+                number = discussion["number"]
+                if not isinstance(repo, str) or not repo or type(number) is not int or number < 1:
+                    raise GitHubError("GitHub returned invalid discussion identifiers.")
+                if (repo, number) in seen:
+                    raise GitHubError("GitHub returned a duplicate accepted discussion answer.")
+                seen.add((repo, number))
+                answers.append(DiscussionAnswer(repo, number, _timestamp(node["createdAt"])))
+            after = _next_cursor(connection, cursors)
+            if after is None:
+                break
+            data = _graphql(run, _DISCUSSIONS_QUERY, login=login, after=after)
+            connection = _object(_object(data["user"])["repositoryDiscussionComments"])
+    except (KeyError, TypeError) as exc:
+        raise GitHubError("GitHub returned an incomplete discussion response.") from exc
+    return answers
+
+
 def fetch_activity(login: str, run: Callable[[list[str]], dict | list] = gh_json) -> Activity:
-    """Collect authored PRs and closed issues visible to the authenticated user.
+    """Collect authored PRs, closed issues and accepted discussion answers.
 
     Search uses creation-time windows below GitHub's 1,000-result cap. Lifecycle
     data and the first review page are batched in each GraphQL search request;
@@ -258,8 +304,10 @@ def fetch_activity(login: str, run: Callable[[list[str]], dict | list] = gh_json
                     raise GitHubError("GitHub returned an unexpected item for the activity search.")
     except (KeyError, TypeError) as exc:
         raise GitHubError("GitHub returned an incomplete activity response.") from exc
+    answers = _discussion_answers(login, run)
     return Activity(
         login,
         tuple(sorted(pulls, key=lambda item: (item.created_at, item.repo, item.number))),
         tuple(sorted(issues, key=lambda item: (item.created_at, item.repo, item.number))),
+        tuple(sorted(answers, key=lambda item: (item.created_at, item.repo, item.number))),
     )

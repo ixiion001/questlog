@@ -32,6 +32,28 @@ pages add `-f after=<cursor>`. The following are the exact variables:
 ]
 ```
 
+The accepted-answers reader uses `_DISCUSSIONS_QUERY` in
+`src/questlog/github.py`, with these variables:
+
+```json
+[
+  {
+    "file": "graphql-discussion-answers-page-1.json",
+    "login": "ixiion001",
+    "first": 2,
+    "after": null
+  }
+]
+```
+
+This capture is empty and is the whole story for that account: `ixiion001` has
+no discussion answers marked as accepted, so the real response has no nodes
+and no next page. It pins the response envelope
+(`data.user.repositoryDiscussionComments`) and the empty case. Discussion
+answers with content, second pages, repeated cursors and duplicate answers are
+synthetic variations in tests, shaped from this envelope, and are not claims
+about real users.
+
 Tests replay these files with page size 2. The PR sample includes open, merged,
 and closed-unmerged PRs. None has submitted reviews; review states, overflowing
 review connections, API failures, and high-volume search windows are explicitly

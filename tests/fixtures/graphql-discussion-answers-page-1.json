@@ -1,0 +1,13 @@
+{
+  "data": {
+    "user": {
+      "repositoryDiscussionComments": {
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": null
+        },
+        "nodes": []
+      }
+    }
+  }
+}

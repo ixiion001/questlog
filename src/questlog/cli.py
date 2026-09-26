@@ -11,6 +11,12 @@ from questlog.models import Activity, Progress
 from questlog.report import render_json, render_text
 
 
+def _format_error(exc: Exception) -> str:
+    """Format an exception with its type and message, avoiding empty strings."""
+    msg = str(exc)
+    return f"{type(exc).__name__}: {msg}" if msg else type(exc).__name__
+
+
 def evaluate_achievements(
     activity: Activity,
     achievements: dict[str, Achievement],
@@ -22,14 +28,16 @@ def evaluate_achievements(
         try:
             module = importlib.import_module(module_name)
         except ModuleNotFoundError as exc:
-            # If the rule module for this specific achievement hasn't been implemented yet, skip
+            # If the rule module for this achievement is not implemented yet, skip with a note
             if exc.name == module_name:
+                sys.stderr.write(f"Note: rule module '{module_name}' not available; skipping.\n")
                 continue
             raise
         evaluate_fn = getattr(module, "evaluate", None)
-        if callable(evaluate_fn):
-            progress = evaluate_fn(activity, list(achievement.thresholds))
-            progress_list.append(progress)
+        if not callable(evaluate_fn):
+            raise AttributeError(f"Rule module '{module_name}' has no callable 'evaluate' function")
+        progress = evaluate_fn(activity, list(achievement.thresholds))
+        progress_list.append(progress)
     return progress_list
 
 
@@ -41,7 +49,7 @@ def handle_status(
     try:
         achievements = load_achievements()
     except Exception as exc:
-        sys.stderr.write(f"Error loading achievements configuration: {exc}\n")
+        sys.stderr.write(f"Error loading achievements configuration: {_format_error(exc)}\n")
         return 1
 
     login = args.user
@@ -58,7 +66,7 @@ def handle_status(
                 return 1
         except Exception as exc:
             sys.stderr.write(
-                f"Error determining GitHub user: {exc}\n"
+                f"Error determining GitHub user: {_format_error(exc)}\n"
                 "Please specify --user or log in via 'gh auth login'.\n"
             )
             return 1
@@ -66,10 +74,15 @@ def handle_status(
     try:
         activity = fetch_activity(login, run=run)
     except Exception as exc:
-        sys.stderr.write(f"Error fetching activity for '{login}': {exc}\n")
+        sys.stderr.write(f"Error fetching activity for '{login}': {_format_error(exc)}\n")
         return 1
 
-    progress_list = evaluate_achievements(activity, achievements)
+    try:
+        progress_list = evaluate_achievements(activity, achievements)
+    except Exception as exc:
+        sys.stderr.write(f"Error evaluating rules: {_format_error(exc)}\n")
+        return 1
+
     labels = {ach.key: ach.label for ach in achievements.values()}
 
     if args.json:
@@ -85,7 +98,7 @@ def handle_explain(args: argparse.Namespace) -> int:
     try:
         achievements = load_achievements()
     except Exception as exc:
-        sys.stderr.write(f"Error loading achievements configuration: {exc}\n")
+        sys.stderr.write(f"Error loading achievements configuration: {_format_error(exc)}\n")
         return 1
 
     key = args.name.lower()

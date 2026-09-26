@@ -40,6 +40,17 @@ def test_explain_unknown(capsys):
     assert "Unknown achievement: 'nonexistent'" in captured.err
 
 
+def test_explain_config_load_error(monkeypatch, capsys):
+    def failing_load():
+        raise ValueError("corrupt config")
+
+    monkeypatch.setattr("questlog.cli.load_achievements", failing_load)
+    ret = main(["explain", "pull_shark"])
+    assert ret == 1
+    captured = capsys.readouterr()
+    assert "Error loading achievements configuration: ValueError: corrupt config" in captured.err
+
+
 def test_status_with_explicit_user(monkeypatch, capsys):
     recorded_calls = []
 
@@ -61,6 +72,7 @@ def test_status_with_explicit_user(monkeypatch, capsys):
     assert ret == 0
     captured = capsys.readouterr()
     assert "[ ] Pull Shark (Tier 1): 3/16 (13 remaining)\n" in captured.out
+    assert "Note: rule module 'questlog.rules.yolo' not available; skipping.\n" in captured.err
 
 
 def test_status_json(monkeypatch, capsys):
@@ -107,6 +119,19 @@ def test_status_default_user_via_gh_api(monkeypatch, capsys):
     assert fetched_login == "detected_user"
 
 
+def test_status_config_load_error(monkeypatch, capsys):
+    def failing_load():
+        raise ValueError("config file missing")
+
+    monkeypatch.setattr("questlog.cli.load_achievements", failing_load)
+    ret = main(["status"])
+    assert ret == 1
+    captured = capsys.readouterr()
+    assert (
+        "Error loading achievements configuration: ValueError: config file missing" in captured.err
+    )
+
+
 def test_status_gh_user_error(capsys):
     def failing_run(args):
         raise RuntimeError("gh auth required")
@@ -114,7 +139,17 @@ def test_status_gh_user_error(capsys):
     ret = main(["status"], run=failing_run)
     assert ret == 1
     captured = capsys.readouterr()
-    assert "Error determining GitHub user" in captured.err
+    assert "Error determining GitHub user: RuntimeError: gh auth required" in captured.err
+
+
+def test_status_bare_exception_formatting(capsys):
+    def failing_run(args):
+        raise RuntimeError()
+
+    ret = main(["status"], run=failing_run)
+    assert ret == 1
+    captured = capsys.readouterr()
+    assert "Error determining GitHub user: RuntimeError\n" in captured.err
 
 
 def test_status_fetch_activity_error(monkeypatch, capsys):
@@ -129,4 +164,24 @@ def test_status_fetch_activity_error(monkeypatch, capsys):
     ret = main(["status", "--user", "testuser"], run=fake_run)
     assert ret == 1
     captured = capsys.readouterr()
-    assert "Error fetching activity for 'testuser'" in captured.err
+    assert "Error fetching activity for 'testuser': RuntimeError: API failure" in captured.err
+
+
+def test_status_rule_missing_evaluate_function(monkeypatch, capsys):
+    def fake_run(args):
+        return {}
+
+    def fake_fetch(login, run=None):
+        return Activity(login, (), ())
+
+    monkeypatch.setattr("questlog.cli.fetch_activity", fake_fetch)
+
+    # Module exists but has no evaluate function
+    bad_rule = types.ModuleType("questlog.rules.pull_shark")
+    monkeypatch.setitem(sys.modules, "questlog.rules.pull_shark", bad_rule)
+
+    ret = main(["status", "--user", "testuser"], run=fake_run)
+    assert ret == 1
+    captured = capsys.readouterr()
+    assert "Error evaluating rules: AttributeError:" in captured.err
+    assert "has no callable 'evaluate' function" in captured.err

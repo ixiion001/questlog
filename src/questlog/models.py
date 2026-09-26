@@ -52,10 +52,17 @@ class DiscussionAnswer:
 
 @dataclass(frozen=True)
 class OwnedRepo:
-    """A repository you own, with its star count."""
+    """A repository you own, with its star count.
+
+    ``name`` uses the ``owner/name`` form, like ``PullRequest.repo``.
+    """
 
     name: str
     stars: int
+
+    def __post_init__(self) -> None:
+        if self.stars < 0:
+            raise ValueError("Star counts cannot be negative.")
 
 
 @dataclass(frozen=True)

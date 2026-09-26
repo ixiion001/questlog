@@ -49,6 +49,11 @@ def test_activity_without_owned_repos_defaults_to_empty():
     assert Activity("octocat", (), (), owned_repos=(repo,)).owned_repos[0].stars == 42
 
 
+def test_owned_repo_rejects_negative_stars():
+    with pytest.raises(ValueError, match="negative"):
+        OwnedRepo("octocat/hello", -1)
+
+
 @pytest.mark.parametrize(
     "stamp",
     [datetime(2026, 1, 1), datetime(2026, 1, 1, tzinfo=timezone(timedelta(hours=2)))],

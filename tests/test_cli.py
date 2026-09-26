@@ -4,6 +4,7 @@ import subprocess
 import sys
 import types
 
+from questlog import __version__
 from questlog.cli import main
 from questlog.models import Activity, Progress
 
@@ -15,6 +16,14 @@ def test_main_empty_argv_shows_help(capsys):
     assert "questlog" in captured.out
     assert "status" in captured.out
     assert "explain" in captured.out
+
+
+def test_version_flag_matches_metadata(capsys):
+    ret = main(["--version"])
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == f"questlog {__version__}"
+    assert importlib.metadata.version("questlog") == __version__
 
 
 def test_python_m_questlog_shows_help():

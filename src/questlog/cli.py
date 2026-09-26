@@ -5,6 +5,7 @@ import importlib
 import sys
 from collections.abc import Callable
 
+from questlog import __version__
 from questlog.config import Achievement, load_achievements
 from questlog.github import fetch_activity, gh_json
 from questlog.models import Activity, Progress
@@ -133,6 +134,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="questlog",
         description="A read-only quest log of your GitHub achievement progress.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"questlog {__version__}",
+        help="Show the questlog version and exit",
     )
     subparsers = parser.add_subparsers(dest="command")
 

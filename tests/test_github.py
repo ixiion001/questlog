@@ -45,6 +45,8 @@ class Replay:
             "second": fixture("graphql-prs-page-2.json"),
             "issues": fixture("graphql-issues-page-1.json"),
         }
+        self.discussion_pages = [fixture("graphql-discussion-answers-page-1.json")]
+        self.discussion_login = "ixiion001"
         self.calls = []
         self.review_page = None
 
@@ -54,6 +56,12 @@ class Replay:
         if "id" in value:
             assert self.review_page is not None
             return copy.deepcopy(self.review_page)
+        if "login" in value:
+            assert value["login"] == self.discussion_login
+            page = self.discussion_pages[0]
+            if len(self.discussion_pages) > 1:
+                self.discussion_pages.pop(0)
+            return copy.deepcopy(page)
         assert "author:ixiion001" in value["search"]
         assert "created:" in value["search"]
         assert "sort:created-asc" in value["search"]
@@ -92,7 +100,9 @@ def test_recorded_activity_is_batched_paginated_and_utc(monkeypatch):
     assert all(
         item.created_at.tzinfo is UTC for item in (*activity.pull_requests, *activity.issues)
     )
-    assert len(run.calls) == 3  # Two PR pages and one issue page; no per-PR calls.
+    # Two PR pages, one issue page and one discussion page; no per-PR calls.
+    assert len(run.calls) == 4
+    assert not [call for call in run.calls if "id" in call]
     assert all(call["first"] == "2" for call in run.calls)
 
 
@@ -155,7 +165,9 @@ def test_existing_qualifying_review_needs_no_further_pages():
         "pageInfo": {"hasNextPage": True, "endCursor": "more"},
     }
     assert fetch_activity("ixiion001", run).pull_requests[0].reviewed
-    assert len(run.calls) == 3
+    # The batched review was enough, so no per-node review query is sent.
+    assert not [call for call in run.calls if "id" in call]
+    assert len(run.calls) == 4
 
 
 def response(nodes, count=None, has_next=False, cursor=None):
@@ -196,6 +208,8 @@ def test_fixture_derived_large_history_splits_windows_without_dropping_records(c
 
     def run(args):
         value = variables(args)
+        if "login" in value:
+            return fixture("graphql-discussion-answers-page-1.json")
         if "is:issue" in value["search"]:
             return response([])
         lower, upper = window(value["search"])
@@ -353,7 +367,7 @@ def test_recorded_search_recovers_from_count_changes_without_stale_results(chang
         nonlocal attempts
         value = variables(args)
         page = recorded(args)
-        if "is:pr" in value["search"]:
+        if "search" in value and "is:pr" in value["search"]:
             if "after" not in value:
                 attempts += 1
                 if attempts <= changes:
@@ -366,10 +380,12 @@ def test_recorded_search_recovers_from_count_changes_without_stale_results(chang
     assert attempts == changes + 1
     assert [pr.number for pr in result.pull_requests] == [6, 1, 1, 2]
     assert len(result.issues) == 1
-    searches = [call for call in recorded.calls if "is:pr" in call["search"]]
+    searches = [call for call in recorded.calls if "search" in call and "is:pr" in call["search"]]
     assert len(searches) == 2 * (changes + 1)
     assert len({call["search"] for call in searches}) == 1
     assert ["after" in call for call in searches] == [False, True] * (changes + 1)
+    # The PR pages above, one issue page and one discussion page.
+    assert len(recorded.calls) == 2 * (changes + 1) + 2
 
 
 def test_changing_search_stops_after_three_attempts():
@@ -377,7 +393,9 @@ def test_changing_search_stops_after_three_attempts():
     recorded.pages["second"]["data"]["search"]["issueCount"] += 1
     with pytest.raises(GitHubError, match="changed during pagination.*3 attempts"):
         fetch_activity("ixiion001", recorded)
+    # The search fails before the discussion page is ever requested.
     assert len(recorded.calls) == 6
+    assert not [call for call in recorded.calls if "login" in call]
     assert all("is:pr" in call["search"] for call in recorded.calls)
     assert ["after" in call for call in recorded.calls] == [False, True] * 3
 
@@ -429,3 +447,191 @@ def test_graphql_failure_is_not_retried():
     with pytest.raises(GitHubError, match="GraphQL returned errors"):
         fetch_activity("ixiion001", recorded)
     assert len(recorded.calls) == 2
+
+
+def answers_page(nodes, has_next=False, cursor=None):
+    # Synthetic variation shaped from the recorded empty page: that account has
+    # no accepted answers, so real responses carry no nodes to replay.
+    return {
+        "data": {
+            "user": {
+                "repositoryDiscussionComments": {
+                    "pageInfo": {"hasNextPage": has_next, "endCursor": cursor},
+                    "nodes": nodes,
+                }
+            }
+        }
+    }
+
+
+def answer(repo, number, created="2026-02-03T09:15:00Z"):
+    return {
+        "createdAt": created,
+        "discussion": {"number": number, "repository": {"nameWithOwner": repo}},
+    }
+
+
+def one_node(discussion, created="2026-02-03T09:15:00Z"):
+    """A single-answer response whose discussion and timestamp the caller controls."""
+    return answers_page([{"createdAt": created, "discussion": discussion}])
+
+
+def test_recorded_account_has_no_accepted_discussion_answers():
+    run = Replay()
+    assert fetch_activity("ixiion001", run).discussion_answers == ()
+    asked = [call for call in run.calls if "login" in call]
+    assert len(asked) == 1
+    assert asked[0]["login"] == "ixiion001"
+    assert "after" not in asked[0]
+
+
+def test_recorded_accepted_answers_are_parsed_across_two_pages(monkeypatch):
+    monkeypatch.setattr(github, "_PAGE_SIZE", 2)
+    run = Replay()
+    run.discussion_login = "answerer"
+    pages = [
+        fixture("graphql-discussion-answers-account-page-1.json"),
+        fixture("graphql-discussion-answers-account-page-2.json"),
+    ]
+    # The account has 233 accepted answers, so a real capture is never the last
+    # page. Only this termination flag is synthetic; every node below is real.
+    pages[-1]["data"]["user"]["repositoryDiscussionComments"]["pageInfo"]["hasNextPage"] = False
+    run.discussion_pages = pages
+
+    # Replayed straight through the reader: the search side of the harness is
+    # recorded for ixiion001 and says nothing about discussion answers.
+    answers = github._discussion_answers("answerer", run)
+    assert [(item.repo, item.number) for item in answers] == [
+        ("dotnet/csharplang", 2628),
+        ("dotnet/roslyn", 49101),
+        ("dotnet/runtime", 43941),
+        ("dotnet/runtime", 43883),
+    ]
+    assert answers[0].created_at == datetime(2019, 7, 3, 12, 42, 47, tzinfo=UTC)
+    assert all(item.created_at.tzinfo is UTC for item in answers)
+    asked = [call for call in run.calls if "login" in call]
+    assert [call.get("after") for call in asked] == [None, "Y3Vyc29yOnYyOpHOAAHNSQ=="]
+
+
+def test_accepted_answers_are_paginated_sorted_and_utc(monkeypatch):
+    monkeypatch.setattr(github, "_PAGE_SIZE", 2)
+    run = Replay()
+    run.discussion_pages = [
+        answers_page(
+            [answer("b/repo", 2, "2026-05-01T10:00:00+02:00"), answer("a/repo", 9)],
+            has_next=True,
+            cursor="Y3Vyc29yOjE=",
+        ),
+        answers_page([answer("a/repo", 1, "2025-12-31T23:00:00Z")]),
+    ]
+    activity = fetch_activity("ixiion001", run)
+    assert [(item.repo, item.number) for item in activity.discussion_answers] == [
+        ("a/repo", 1),
+        ("a/repo", 9),
+        ("b/repo", 2),
+    ]
+    assert all(item.created_at.tzinfo is UTC for item in activity.discussion_answers)
+    assert activity.discussion_answers[0].created_at == datetime(2025, 12, 31, 23, tzinfo=UTC)
+    assert activity.discussion_answers[2].created_at == datetime(2026, 5, 1, 8, tzinfo=UTC)
+    asked = [call for call in run.calls if "login" in call]
+    assert [call.get("after") for call in asked] == [None, "Y3Vyc29yOjE="]
+    assert all(call["first"] == "2" for call in asked)
+
+
+def test_duplicate_accepted_answer_is_rejected():
+    run = Replay()
+    run.discussion_pages = [answers_page([answer("a/repo", 4), answer("a/repo", 4)])]
+    with pytest.raises(GitHubError, match="duplicate accepted discussion answer"):
+        fetch_activity("ixiion001", run)
+
+
+def test_same_number_in_two_repositories_is_not_a_duplicate():
+    run = Replay()
+    run.discussion_pages = [answers_page([answer("a/repo", 4), answer("b/repo", 4)])]
+    answers = fetch_activity("ixiion001", run).discussion_answers
+    assert [(item.repo, item.number) for item in answers] == [("a/repo", 4), ("b/repo", 4)]
+
+
+def test_discussion_pagination_does_not_loop_on_repeated_cursor():
+    run = Replay()
+    run.discussion_pages = [
+        answers_page([answer("a/repo", 1)], has_next=True, cursor="same"),
+        answers_page([], has_next=True, cursor="same"),
+    ]
+    with pytest.raises(GitHubError, match="pagination did not advance"):
+        fetch_activity("ixiion001", run)
+
+
+@pytest.mark.parametrize(
+    ("problem", "message"),
+    [
+        ({"data": {"user": {}}}, "incomplete discussion response"),
+        (
+            {"data": {"user": {"repositoryDiscussionComments": {"nodes": [], "pageInfo": {}}}}},
+            "incomplete discussion response",
+        ),
+        (
+            one_node({"number": 7, "repository": {"nameWithOwner": "a/repo"}}, created=None),
+            "missing or invalid timestamp",
+        ),
+        (
+            one_node({"number": 7, "repository": {"nameWithOwner": "a/repo"}}, created="x"),
+            "without a valid timezone",
+        ),
+        (
+            one_node(
+                {"number": 7, "repository": {"nameWithOwner": "a/repo"}},
+                created="2026-05-01T10:00:00",
+            ),
+            "without a valid timezone",
+        ),
+        (
+            one_node({"number": 0, "repository": {"nameWithOwner": "a/repo"}}),
+            "invalid discussion identifiers",
+        ),
+        (
+            one_node({"number": -1, "repository": {"nameWithOwner": "a/repo"}}),
+            "invalid discussion identifiers",
+        ),
+        (
+            one_node({"number": "7", "repository": {"nameWithOwner": "a/repo"}}),
+            "invalid discussion identifiers",
+        ),
+        (
+            one_node({"number": 7, "repository": {"nameWithOwner": ""}}),
+            "invalid discussion identifiers",
+        ),
+        (one_node({"number": 7, "repository": {}}), "incomplete discussion response"),
+        (one_node({"number": 7}), "incomplete discussion response"),
+        (one_node({"number": 7, "repository": None}), "invalid response object"),
+        (
+            {"data": {"user": {"repositoryDiscussionComments": {"nodes": None, "pageInfo": {}}}}},
+            "invalid or inaccessible result node",
+        ),
+    ],
+)
+def test_malformed_discussion_response_is_not_reported_as_success(problem, message):
+    # Only the discussion request is malformed. Feeding the same payload to the
+    # search would let the search reject it, and the case would pass for the
+    # wrong reason while the discussion reader went untested.
+    recorded = Replay()
+
+    def run(args):
+        if "login" in variables(args):
+            return problem
+        return recorded(args)
+
+    with pytest.raises(GitHubError, match=message):
+        fetch_activity("ixiion001", run)
+    assert [call for call in recorded.calls if "search" in call]
+
+
+def test_discussion_failures_are_not_hidden_by_the_activity_search():
+    def run(args):
+        value = variables(args)
+        if "login" in value:
+            return {"data": {}, "errors": [{"message": "bad credentials"}]}
+        return Replay()(args)
+
+    with pytest.raises(GitHubError, match="GraphQL returned errors"):
+        fetch_activity("ixiion001", run)

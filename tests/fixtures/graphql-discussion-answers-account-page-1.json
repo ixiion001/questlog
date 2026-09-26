@@ -1,0 +1,28 @@
+{
+  "data": {
+    "user": {
+      "repositoryDiscussionComments": {
+        "pageInfo": {
+          "hasNextPage": true,
+          "endCursor": "Y3Vyc29yOnYyOpHOAAHNSQ=="
+        },
+        "nodes": [
+          {
+            "createdAt": "2019-07-03T12:42:47Z",
+            "discussion": {
+              "number": 2628,
+              "repository": { "nameWithOwner": "dotnet/csharplang" }
+            }
+          },
+          {
+            "createdAt": "2020-10-31T16:08:52Z",
+            "discussion": {
+              "number": 49101,
+              "repository": { "nameWithOwner": "dotnet/roslyn" }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

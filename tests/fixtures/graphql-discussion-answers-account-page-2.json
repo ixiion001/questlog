@@ -1,0 +1,28 @@
+{
+  "data": {
+    "user": {
+      "repositoryDiscussionComments": {
+        "pageInfo": {
+          "hasNextPage": true,
+          "endCursor": "Y3Vyc29yOnYyOpHOAAHXXA=="
+        },
+        "nodes": [
+          {
+            "createdAt": "2020-11-03T20:37:49Z",
+            "discussion": {
+              "number": 43941,
+              "repository": { "nameWithOwner": "dotnet/runtime" }
+            }
+          },
+          {
+            "createdAt": "2020-11-03T20:46:35Z",
+            "discussion": {
+              "number": 43883,
+              "repository": { "nameWithOwner": "dotnet/runtime" }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

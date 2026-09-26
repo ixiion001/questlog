@@ -48,16 +48,16 @@ def test_thresholds_come_from_the_caller():
     )
 
 
-def test_every_answer_counts_within_one_discussion():
-    """Two accepted answers in one discussion are two, not one."""
+def test_same_discussion_number_in_two_repositories_counts_twice():
+    """Discussion numbers are only unique within a repository."""
     activity = Activity(
         "octocat",
         (),
         (),
         (
             DiscussionAnswer("o/r", 7, T0),
-            DiscussionAnswer("o/r", 7, T0),
             DiscussionAnswer("o/other", 7, T0),
+            DiscussionAnswer("o/r", 8, T0),
         ),
     )
     assert evaluate(activity, THRESHOLDS).count == 3

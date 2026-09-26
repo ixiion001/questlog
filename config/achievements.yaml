@@ -1,0 +1,13 @@
+# Achievement tiers. When GitHub changes a rule, edit this file, not the code.
+pull_shark:
+  label: Pull Shark
+  thresholds: [2, 16, 128, 1024]
+  summary: Pull requests you opened that were merged.
+yolo:
+  label: YOLO
+  thresholds: [1]
+  summary: A pull request you merged without a review.
+quickdraw:
+  label: Quickdraw
+  thresholds: [1]
+  summary: An issue or pull request you closed within 5 minutes of opening it.

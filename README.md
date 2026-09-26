@@ -24,7 +24,7 @@ uv run pytest
 uv run ruff check && uv run ruff format --check
 ```
 
-Tiers live in `config/achievements.yaml`, so a rule change on GitHub's side is
+Tiers live in `src/questlog/achievements.yaml`, so a rule change on GitHub's side is
 a config edit. Tests use recorded API responses in `tests/fixtures/` and never
 touch the network.
 

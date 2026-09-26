@@ -139,8 +139,10 @@ def test_no_snapshots_yet_produces_no_changes(tmp_path):
 def test_snapshot_at_must_be_utc():
     with pytest.raises(HistoryError, match="must be a UTC datetime"):
         Snapshot(datetime(2026, 1, 1), "octocat", ())
+    # A fixed offset, not the machine's: ``astimezone()`` is UTC on a UTC host,
+    # which would make this test pass on one machine and fail on another.
     with pytest.raises(HistoryError, match="must be a UTC datetime"):
-        Snapshot(datetime(2026, 1, 1, 9, tzinfo=UTC).astimezone(), "octocat", ())
+        Snapshot(datetime(2026, 1, 1, 9, 0, tzinfo=timezone(timedelta(hours=2))), "octocat", ())
 
 
 def test_a_corrupt_line_is_reported_rather_than_dropped(tmp_path):

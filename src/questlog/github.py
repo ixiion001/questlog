@@ -6,7 +6,7 @@ import subprocess
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
-from questlog.models import Activity, DiscussionAnswer, Issue, PullRequest
+from questlog.models import Activity, DiscussionAnswer, Issue, OwnedRepo, PullRequest
 
 _PAGE_SIZE = 100
 _SEARCH_LIMIT = 1000
@@ -54,6 +54,17 @@ _DISCUSSIONS_QUERY = """query($login: String!, $first: Int!, $after: String) {
         createdAt
         discussion { number repository { nameWithOwner } }
       }
+    }
+  }
+}
+"""
+_OWNED_REPOS_QUERY = """query($login: String!, $first: Int!) {
+  user(login: $login) {
+    repositories(
+      ownerAffiliations: OWNER, first: $first, orderBy: {field: STARGAZERS, direction: DESC}
+    ) {
+      pageInfo { hasNextPage endCursor }
+      nodes { nameWithOwner stargazerCount }
     }
   }
 }
@@ -261,8 +272,38 @@ def _discussion_answers(login: str, run: Callable) -> list[DiscussionAnswer]:
     return answers
 
 
+def _owned_repos(login: str, run: Callable) -> tuple[OwnedRepo, ...]:
+    """Collect the repositories the user owns, most stars first.
+
+    One bounded page is the whole story by design: the query orders by
+    STARGAZERS DESC, so the first node holds the most stars of any
+    repository the user owns, which is all any rule needs. The query
+    filters only on ownership, so forks and private repositories the
+    login can see are included. A repeated repository name means the
+    response cannot be trusted.
+    """
+    repos: list[OwnedRepo] = []
+    seen: set[str] = set()
+    try:
+        connection = _object(
+            _object(_graphql(run, _OWNED_REPOS_QUERY, login=login)["user"])["repositories"]
+        )
+        for node in _nodes(connection):
+            name = node["nameWithOwner"]
+            stars = node["stargazerCount"]
+            if not isinstance(name, str) or not name or type(stars) is not int or stars < 0:
+                raise GitHubError("GitHub returned invalid repository data.")
+            if name in seen:
+                raise GitHubError("GitHub returned a duplicate owned repository.")
+            seen.add(name)
+            repos.append(OwnedRepo(name, stars))
+    except (KeyError, TypeError) as exc:
+        raise GitHubError("GitHub returned an incomplete owned-repositories response.") from exc
+    return tuple(repos)
+
+
 def fetch_activity(login: str, run: Callable[[list[str]], dict | list] = gh_json) -> Activity:
-    """Collect authored PRs, closed issues and accepted discussion answers.
+    """Collect authored PRs, closed issues, accepted answers and owned repositories.
 
     Search uses creation-time windows below GitHub's 1,000-result cap. Lifecycle
     data and the first review page are batched in each GraphQL search request;
@@ -270,6 +311,7 @@ def fetch_activity(login: str, run: Callable[[list[str]], dict | list] = gh_json
     means any submitted review except PENDING (including comments/dismissals).
     For merged PRs, only reviews submitted at or before the merge count.
     A search window whose result count changes is restarted at most twice.
+    Owned repositories arrive in one bounded page, most stars first.
     All timestamps are aware UTC. Incomplete API responses raise GitHubError.
     """
     if not isinstance(login, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}", login):
@@ -305,9 +347,11 @@ def fetch_activity(login: str, run: Callable[[list[str]], dict | list] = gh_json
     except (KeyError, TypeError) as exc:
         raise GitHubError("GitHub returned an incomplete activity response.") from exc
     answers = _discussion_answers(login, run)
+    repos = _owned_repos(login, run)
     return Activity(
         login,
         tuple(sorted(pulls, key=lambda item: (item.created_at, item.repo, item.number))),
         tuple(sorted(issues, key=lambda item: (item.created_at, item.repo, item.number))),
         tuple(sorted(answers, key=lambda item: (item.created_at, item.repo, item.number))),
+        repos,
     )

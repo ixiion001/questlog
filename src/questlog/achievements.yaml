@@ -15,3 +15,7 @@ galaxy_brain:
   label: Galaxy Brain
   thresholds: [2, 8, 16, 32]
   summary: Answers you gave in GitHub Discussions that were marked as accepted.
+starstruck:
+  label: Starstruck
+  thresholds: [16, 128, 512, 4096]
+  summary: Stars on the most-starred repository you own.

@@ -15,7 +15,22 @@ def test_render_text_in_progress():
     ]
     output = render_text(progress)
     expected = (
-        "[ ] quickdraw (Tier 0): 0/1 (1 remaining)\n[ ] pull_shark (Tier 1): 3/16 (13 remaining)\n"
+        "[ ] quickdraw (no tier yet): 0/1 (1 remaining)\n"
+        "[ ] pull_shark (Tier 1): 3/16 (13 remaining)\n"
+    )
+    assert output == expected
+
+
+def test_render_text_with_labels():
+    progress = [
+        Progress(name="quickdraw", count=0, tier=0, next_threshold=1, remaining=1),
+        Progress(name="pull_shark", count=3, tier=1, next_threshold=16, remaining=13),
+    ]
+    labels = {"quickdraw": "Quickdraw", "pull_shark": "Pull Shark"}
+    output = render_text(progress, labels=labels)
+    expected = (
+        "[ ] Quickdraw (no tier yet): 0/1 (1 remaining)\n"
+        "[ ] Pull Shark (Tier 1): 3/16 (13 remaining)\n"
     )
     assert output == expected
 

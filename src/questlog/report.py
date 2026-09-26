@@ -2,24 +2,27 @@
 
 import dataclasses
 import json
+from collections.abc import Mapping
 
 from questlog.models import Progress
 
 
-def _format_progress(item: Progress) -> str:
+def _format_progress(item: Progress, labels: Mapping[str, str] | None = None) -> str:
+    name = labels.get(item.name, item.name) if labels else item.name
+    tier_label = f"Tier {item.tier}" if item.tier > 0 else "no tier yet"
     if item.next_threshold is None:
-        return f"[x] {item.name} (Tier {item.tier}): {item.count} (completed)"
+        return f"[x] {name} ({tier_label}): {item.count} (completed)"
     return (
-        f"[ ] {item.name} (Tier {item.tier}): "
+        f"[ ] {name} ({tier_label}): "
         f"{item.count}/{item.next_threshold} ({item.remaining} remaining)"
     )
 
 
-def render_text(progress: list[Progress]) -> str:
+def render_text(progress: list[Progress], labels: Mapping[str, str] | None = None) -> str:
     """Render a list of Progress objects into a readable text view."""
     if not progress:
         return "No progress to report.\n"
-    return "\n".join(_format_progress(p) for p in progress) + "\n"
+    return "\n".join(_format_progress(p, labels) for p in progress) + "\n"
 
 
 def render_json(progress: list[Progress]) -> str:

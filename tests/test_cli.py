@@ -1,3 +1,4 @@
+import importlib
 import json
 import subprocess
 import sys
@@ -90,6 +91,36 @@ def test_status_with_explicit_user(monkeypatch, capsys):
     dummy_rule = types.ModuleType("questlog.rules.pull_shark")
     dummy_rule.evaluate = lambda act, thresh: Progress("pull_shark", 3, 1, 16, 13)
     monkeypatch.setitem(sys.modules, "questlog.rules.pull_shark", dummy_rule)
+
+    ret = main(["status", "--user", "testuser"], run=fake_run)
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "[ ] Pull Shark (Tier 1): 3/16 (13 remaining)\n" in captured.out
+    assert "[ ] YOLO (no tier yet): 0/1 (1 remaining)\n" in captured.out
+    assert "questlog.rules.yolo' not available" not in captured.err
+
+
+def test_status_skips_missing_rule_module_with_a_note(monkeypatch, capsys):
+    def fake_run(args):
+        return {}
+
+    def fake_fetch_activity(login, run=None):
+        return Activity(login, (), ())
+
+    monkeypatch.setattr("questlog.cli.fetch_activity", fake_fetch_activity)
+
+    dummy_rule = types.ModuleType("questlog.rules.pull_shark")
+    dummy_rule.evaluate = lambda act, thresh: Progress("pull_shark", 3, 1, 16, 13)
+    monkeypatch.setitem(sys.modules, "questlog.rules.pull_shark", dummy_rule)
+
+    real_import = importlib.import_module
+
+    def fake_import(name):
+        if name == "questlog.rules.yolo":
+            raise ModuleNotFoundError(f"No module named {name!r}", name=name)
+        return real_import(name)
+
+    monkeypatch.setattr("questlog.cli.importlib", types.SimpleNamespace(import_module=fake_import))
 
     ret = main(["status", "--user", "testuser"], run=fake_run)
     assert ret == 0

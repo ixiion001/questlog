@@ -11,3 +11,7 @@ quickdraw:
   label: Quickdraw
   thresholds: [1]
   summary: An issue or pull request you closed within 5 minutes of opening it.
+galaxy_brain:
+  label: Galaxy Brain
+  thresholds: [2, 8, 16, 32]
+  summary: Answers you gave in GitHub Discussions that were marked as accepted.

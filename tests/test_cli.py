@@ -84,6 +84,53 @@ def test_explain_config_load_error(monkeypatch, capsys):
     assert "Error loading achievements configuration: ValueError: corrupt config" in captured.err
 
 
+def test_explain_with_user_shows_progress(monkeypatch, capsys):
+    evaluated = []
+    run = _install_rules(monkeypatch, evaluated)
+
+    ret = main(["explain", "pull_shark", "--user", "testuser"], run=run)
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert (
+        "Your progress:\n"
+        "[ ] Pull Shark (Tier 1): [###-----------------] 3/16 (13 remaining)\n" in captured.out
+    )
+    assert "  Tier 1: 2\n" in captured.out
+    assert evaluated == ["pull_shark"]
+
+
+def test_explain_without_user_does_not_fetch(monkeypatch, capsys):
+    def fail_run(args):
+        raise AssertionError("explain without --user must not invoke gh")
+
+    def fail_fetch(login, run=None):
+        raise AssertionError("explain without --user must not fetch activity")
+
+    monkeypatch.setattr("questlog.cli.fetch_activity", fail_fetch)
+    ret = main(["explain", "pull_shark"], run=fail_run)
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "Tiers:" in captured.out
+    assert "Your progress:" not in captured.out
+    assert captured.err == ""
+
+
+def test_explain_progress_error_is_a_note(monkeypatch, capsys):
+    def failing_fetch_activity(login, run=None):
+        raise RuntimeError("API failure")
+
+    monkeypatch.setattr("questlog.cli.fetch_activity", failing_fetch_activity)
+
+    ret = main(["explain", "pull_shark", "--user", "testuser"], run=lambda args: {})
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "Tiers:" in captured.out
+    assert "Your progress:" not in captured.out
+    assert "Note: could not read progress for 'testuser': RuntimeError: API failure" in (
+        captured.err
+    )
+
+
 def test_status_with_explicit_user(monkeypatch, capsys):
     recorded_calls = []
 

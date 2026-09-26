@@ -39,10 +39,23 @@ class Issue:
 
 
 @dataclass(frozen=True)
+class DiscussionAnswer:
+    """An answer you wrote in a discussion that GitHub marks as the answer."""
+
+    repo: str
+    number: int
+    created_at: datetime
+
+    def __post_init__(self) -> None:
+        _require_utc(self, "created_at")
+
+
+@dataclass(frozen=True)
 class Activity:
     login: str
     pull_requests: tuple[PullRequest, ...]
     issues: tuple[Issue, ...]
+    discussion_answers: tuple[DiscussionAnswer, ...] = ()
 
 
 @dataclass(frozen=True)

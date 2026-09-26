@@ -1,4 +1,5 @@
 import json
+import subprocess
 import sys
 import types
 
@@ -13,6 +14,17 @@ def test_main_empty_argv_shows_help(capsys):
     assert "questlog" in captured.out
     assert "status" in captured.out
     assert "explain" in captured.out
+
+
+def test_python_m_questlog_shows_help():
+    result = subprocess.run(
+        [sys.executable, "-m", "questlog"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert "usage: questlog" in result.stdout
 
 
 def test_explain_valid(capsys):

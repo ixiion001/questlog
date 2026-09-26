@@ -102,6 +102,7 @@ def test_recorded_activity_is_batched_paginated_and_utc(monkeypatch):
     )
     # Two PR pages, one issue page and one discussion page; no per-PR calls.
     assert len(run.calls) == 4
+    assert not [call for call in run.calls if "id" in call]
     assert all(call["first"] == "2" for call in run.calls)
 
 
@@ -164,6 +165,8 @@ def test_existing_qualifying_review_needs_no_further_pages():
         "pageInfo": {"hasNextPage": True, "endCursor": "more"},
     }
     assert fetch_activity("ixiion001", run).pull_requests[0].reviewed
+    # The batched review was enough, so no per-node review query is sent.
+    assert not [call for call in run.calls if "id" in call]
     assert len(run.calls) == 4
 
 

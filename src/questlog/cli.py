@@ -82,24 +82,20 @@ def handle_status(
             return 1
         achievements = selected
 
-    login = args.user
-    if not login:
-        try:
-            user_data = run(["api", "user"])
-            if isinstance(user_data, dict) and "login" in user_data:
-                login = str(user_data["login"])
-            else:
-                sys.stderr.write(
-                    "Error: Could not determine GitHub user from 'gh api user'. "
-                    "Please specify --user or log in via 'gh auth login'.\n"
-                )
-                return 1
-        except Exception as exc:
-            sys.stderr.write(
-                f"Error determining GitHub user: {_format_error(exc)}\n"
-                "Please specify --user or log in via 'gh auth login'.\n"
-            )
-            return 1
+    try:
+        login = resolve_login(args.user, run)
+    except Exception as exc:
+        sys.stderr.write(
+            f"Error determining GitHub user: {_format_error(exc)}\n"
+            "Please specify --user or log in via 'gh auth login'.\n"
+        )
+        return 1
+    if login is None:
+        sys.stderr.write(
+            "Error: Could not determine GitHub user from 'gh api user'. "
+            "Please specify --user or log in via 'gh auth login'.\n"
+        )
+        return 1
 
     try:
         activity = fetch_activity(login, run=run)
@@ -123,7 +119,23 @@ def handle_status(
     return 0
 
 
-def handle_explain(args: argparse.Namespace) -> int:
+def resolve_login(
+    user: str | None,
+    run: Callable[[list[str]], dict | list],
+) -> str | None:
+    """Return an explicit user or the authenticated ``gh`` login, if available."""
+    if user:
+        return user
+    user_data = run(["api", "user"])
+    if isinstance(user_data, dict) and "login" in user_data:
+        return str(user_data["login"])
+    return None
+
+
+def handle_explain(
+    args: argparse.Namespace,
+    run: Callable[[list[str]], dict | list],
+) -> int:
     """Handle ``questlog explain NAME``."""
     try:
         achievements = load_achievements()
@@ -149,8 +161,24 @@ def handle_explain(args: argparse.Namespace) -> int:
         f"{ach.label} ({ach.key})",
         ach.summary,
         "",
-        "Tiers:",
     ]
+
+    if args.user is not None:
+        try:
+            activity = fetch_activity(args.user, run=run)
+            progress = evaluate_achievements(activity, {ach.key: ach})
+        except Exception as exc:
+            sys.stderr.write(
+                f"Note: could not read progress for '{args.user}': {_format_error(exc)}\n"
+            )
+        else:
+            if progress:
+                lines.append("Your progress:")
+                labels = {ach.key: ach.label}
+                lines.extend(render_text(progress, labels=labels).rstrip("\n").splitlines())
+                lines.append("")
+
+    lines.append("Tiers:")
     for i, threshold in enumerate(ach.thresholds, 1):
         lines.append(f"  Tier {i}: {threshold}")
 
@@ -189,6 +217,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     explain_parser = subparsers.add_parser("explain", help="Explain an achievement and its tiers")
     explain_parser.add_argument("name", type=str, help="Achievement name or key to explain")
+    explain_parser.add_argument(
+        "--user",
+        type=str,
+        default=None,
+        help="GitHub username for progress (omit to show tiers without fetching activity)",
+    )
 
     return parser
 
@@ -216,7 +250,7 @@ def main(
     if args.command == "status":
         return handle_status(args, run=run)
     elif args.command == "explain":
-        return handle_explain(args)
+        return handle_explain(args, run=run)
     else:
         parser.print_help()
         return 0
